@@ -1710,27 +1710,17 @@ html, body {
           <div class="book-result-isbn">978-4-10-113701-6</div>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">学年・クラス</label>
-          <select class="form-select">
-            <option>4年1組</option><option>4年2組</option>
-            <option>5年1組</option><option>5年2組</option>
-            <option>6年1組</option><option>6年2組</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">出席番号</label>
-          <input class="form-input" type="number" inputmode="numeric" placeholder="15" min="1" max="40" />
-        </div>
+      <div class="form-group">
+        <label class="form-label">利用者ID</label>
+        <input class="form-input" type="text" id="lendUserId" inputmode="text" placeholder="S25001" autocomplete="off" style="font-family:'JetBrains Mono',monospace;font-size:1.2em;letter-spacing:0.05em;" />
       </div>
       <div class="form-group">
         <label class="form-label">返却予定日</label>
-        <input class="form-input" type="date" value="2025-08-05" />
+        <input class="form-input" type="date" id="lendDueAt" />
       </div>
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="closeModal('lendModal')">キャンセル</button>
-        <button class="btn btn-primary" onclick="closeModal('lendModal')">✓ 貸出確定</button>
+        <button class="btn btn-primary" onclick="confirmLend()">✓ 貸出確定</button>
       </div>
     </div>
   </div>
@@ -2172,13 +2162,27 @@ async function loadStats(schoolCd) {
 // ============================================================
 // 貸出処理
 // ============================================================
-async function submitLending(bookId, grade, studentNumber, dueAt) {
+async function confirmLend() {
+  const userId = document.getElementById('lendUserId').value.trim();
+  const dueAt  = document.getElementById('lendDueAt').value;
+  if (!userId) { alert('利用者IDを入力してください'); return; }
+  if (!dueAt)  { alert('返却予定日を入力してください'); return; }
+  if (!window._lendBookId) { alert('本が選択されていません'); return; }
+  const ok = await submitLending(window._lendBookId, userId, dueAt);
+  if (ok) {
+    closeModal('lendModal');
+    await loadStats(currentSchoolCd);
+    const fb = document.getElementById('scanFeedback');
+    if (fb) fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">貸出しました</div><div class="fb-body">${window._lendBookTitle} → ${userId}</div></div></div>`;
+  }
+}
+
+async function submitLending(bookId, userId, dueAt) {
   const { error } = await db.from('lendings').insert({
-    book_id:        bookId,
-    school_cd:      currentSchoolCd,
-    grade:          grade,
-    student_number: studentNumber,
-    due_at:         dueAt
+    book_id:   bookId,
+    school_cd: currentSchoolCd,
+    user_id:   userId,
+    due_at:    dueAt
   })
   if (error) { alert('貸出登録に失敗しました: ' + error.message); return false }
   return true
@@ -2353,7 +2357,15 @@ async function handleHomeScan() {
       return;
     }
     fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📤</div><div><div class="fb-title">貸出処理へ</div><div class="fb-body">${book.title}</div><div class="fb-isbn">${val}</div></div></div>`;
+    // 貸出モーダルに本情報をセット
+    window._lendBookId = book.id;
+    window._lendBookTitle = book.title;
+    // 返却予定日を2週間後に自動セット
+    const due = new Date(); due.setDate(due.getDate() + 14);
+    document.getElementById('lendDueAt').value = due.toISOString().slice(0,10);
+    document.getElementById('lendUserId').value = '';
     openModal('lendModal');
+    setTimeout(() => document.getElementById('lendUserId').focus(), 300);
 
   } else if (scanMode === 'ret') {
     // 返却モード
