@@ -9,6 +9,37 @@
 <title>図書館管理システム</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
+/* ===== ログイン画面 ===== */
+#loginScreen {
+  position: fixed; inset: 0; background: #0c0e14;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999; padding: 24px;
+}
+#loginScreen.hidden { display: none; }
+.login-card {
+  background: #13161f; border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px; padding: 36px 28px; width: 100%; max-width: 380px;
+}
+.login-logo { text-align: center; margin-bottom: 28px; }
+.login-logo .icon { font-size: 48px; margin-bottom: 8px; }
+.login-logo h1 { font-size: 1.2em; font-weight: 700; color: #dde1ee; }
+.login-logo p { font-size: .8em; color: #838aa3; margin-top: 4px; }
+.login-field { margin-bottom: 16px; }
+.login-field label { display: block; font-size: .8em; color: #838aa3; margin-bottom: 6px; }
+.login-field input {
+  width: 100%; padding: 12px 14px; background: #1a1e2b;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+  color: #dde1ee; font-size: 1em; outline: none;
+}
+.login-field input:focus { border-color: #5b9cf6; }
+.login-btn {
+  width: 100%; padding: 14px; background: #5b9cf6; color: #fff;
+  border: none; border-radius: 12px; font-size: 1em; font-weight: 700;
+  cursor: pointer; margin-top: 8px;
+}
+.login-btn:disabled { opacity: .5; }
+.login-error { color: #f66; font-size: .85em; margin-top: 10px; text-align: center; }
+</style>
 :root {
   --bg:        #0c0e14;
   --bg2:       #13161f;
@@ -984,6 +1015,27 @@ html, body {
 </head>
 <body>
 
+<!-- ログイン画面 -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="icon">📚</div>
+      <h1>愛川町図書館管理システム</h1>
+      <p>学校アカウントでログインしてください</p>
+    </div>
+    <div class="login-field">
+      <label>メールアドレス</label>
+      <input type="email" id="loginEmail" placeholder="takamine@aikawa-lib.jp" autocomplete="email" />
+    </div>
+    <div class="login-field">
+      <label>パスワード</label>
+      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">ログイン</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
 <!-- ============================================================
      SCREEN 1: ダッシュボード
      ============================================================ -->
@@ -993,6 +1045,7 @@ html, body {
     <div class="topbar-school" id="home-school-label">高峰小学校</div>
     <div class="topbar-right">
       <div class="icon-btn" onclick="openModal('schoolModal')">🏫</div>
+      <div class="icon-btn" onclick="doLogout()" style="font-size:.75em;color:var(--text3);">退出</div>
     </div>
   </div>
 
@@ -1957,6 +2010,58 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 // 現在選択中の学校CD
 let currentSchoolCd = '50301'
 
+// ===== ログイン処理 =====
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('loginError');
+  err.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'ログイン中…';
+
+  const { data, error } = await db.auth.signInWithPassword({ email, password });
+  if (error) {
+    err.textContent = 'メールアドレスまたはパスワードが正しくありません';
+    btn.disabled = false;
+    btn.textContent = 'ログイン';
+    return;
+  }
+
+  const schoolCd = data.user?.user_metadata?.school_cd;
+  const schoolName = data.user?.user_metadata?.school_name;
+  if (schoolCd) {
+    currentSchoolCd = schoolCd;
+    // 学校名を画面に反映
+    document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+    document.getElementById('tab-school-label') && (document.getElementById('tab-school-label').textContent = schoolName);
+  }
+
+  document.getElementById('loginScreen').classList.add('hidden');
+  await loadStats(currentSchoolCd);
+  await loadBooks(currentSchoolCd);
+}
+
+// Enterキーでログイン
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('loginPassword')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+});
+
+// セッション復元（リロード時に再ログイン不要）
+db.auth.onAuthStateChange(async (event, session) => {
+  if (session?.user) {
+    const schoolCd = session.user.user_metadata?.school_cd;
+    const schoolName = session.user.user_metadata?.school_name;
+    if (schoolCd) {
+      currentSchoolCd = schoolCd;
+      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+    }
+    document.getElementById('loginScreen').classList.add('hidden');
+  }
+});
+
 // ============================================================
 // 蔵書データの読み込み（学校切り替え時・起動時に呼ぶ）
 // ============================================================
@@ -2104,9 +2209,6 @@ async function findBookByISBN(isbn, schoolCd) {
 // 起動時の初期化
 // ============================================================
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadStats(currentSchoolCd)
-  await loadBooks(currentSchoolCd)
-
   // 検索
   let searchTimer = null
   const searchInput = document.getElementById('bookSearchInput')
@@ -2119,6 +2221,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 })
+
+async function doLogout() {
+  if (!confirm('ログアウトしますか？')) return;
+  await db.auth.signOut();
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('loginBtn').disabled = false;
+  document.getElementById('loginBtn').textContent = 'ログイン';
+}
 
 // バックアップ日をメモリで管理
 const backupDates = {};
