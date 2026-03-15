@@ -2005,7 +2005,13 @@ html, body {
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
 
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    detectSessionInUrl: false,
+    persistSession: true,
+    autoRefreshToken: true,
+  }
+})
 
 // 現在選択中の学校CD
 let currentSchoolCd = '50301'
