@@ -1179,8 +1179,8 @@ html, body {
     </div>
 
     <!-- カテゴリーフィルター -->
-    <div style="margin-bottom:10px;">
-      <select class="form-select" id="categoryFilter" onchange="setCategoryFilter(this.value)" style="font-size:13px;padding:8px 12px;">
+    <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;">
+      <select class="form-select" id="categoryFilter" onchange="setCategoryFilter(this.value)" style="font-size:13px;padding:8px 12px;flex:1;">
         <option value="">📂 カテゴリーで絞り込み</option>
         <option value="絵本">絵本</option>
         <option value="物語・小説">物語・小説</option>
@@ -1196,6 +1196,7 @@ html, body {
         <option value="外国語">外国語</option>
         <option value="総合・その他">総合・その他</option>
       </select>
+      <button onclick="resetCategoryFilter()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;color:var(--text2);font-size:13px;cursor:pointer;white-space:nowrap;">✕ 解除</button>
     </div>
 
     <div class="segmented">
@@ -2289,6 +2290,13 @@ function setKanaFilter(el, kana) {
 
 function setCategoryFilter(val) {
   currentCategoryFilter = val;
+  currentBooksPage = 0;
+  renderBooksPage(currentSchoolCd);
+}
+
+function resetCategoryFilter() {
+  currentCategoryFilter = '';
+  document.getElementById('categoryFilter').value = '';
   currentBooksPage = 0;
   renderBooksPage(currentSchoolCd);
 }
