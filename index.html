@@ -1818,6 +1818,55 @@ html, body {
   </div>
 </div>
 
+<!-- 本の編集モーダル -->
+<div class="modal-overlay" id="editBookModal" onclick="closeModalOutside(event,'editBookModal')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">✏️ 書籍情報を編集</div>
+      <button class="modal-close" onclick="closeModal('editBookModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">タイトル</label>
+        <input class="form-input" type="text" id="editTitle" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">著者</label>
+        <input class="form-input" type="text" id="editAuthor" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">出版社</label>
+        <input class="form-input" type="text" id="editPublisher" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">登録番号</label>
+          <input class="form-input" type="text" id="editRegNo" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">価格（円）</label>
+          <input class="form-input" type="number" id="editPrice" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">納品日</label>
+          <input class="form-input" type="date" id="editDeliveryDate" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">購入年度</label>
+          <input class="form-input" type="number" id="editFiscalYear" placeholder="2024" />
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:8px;">
+        <button class="btn btn-ghost" onclick="closeModal('editBookModal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveBookEdit()">💾 保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 除籍登録モーダル -->
 <div class="modal-overlay" id="withdrawModal" onclick="closeModalOutside(event,'withdrawModal')">
   <div class="modal-sheet">
@@ -3061,12 +3110,31 @@ async function openBookDetail(bookId) {
   if (error || !data) return;
   currentBookData = data;
 
+  // 表紙画像をOpenBDから取得
+  let coverHtml = '<div style="font-size:52px;margin-bottom:10px;">📗</div>';
+  if (data.isbn) {
+    const isbn = data.isbn.replace(/-/g, '');
+    try {
+      const res = await fetch(`https://api.openbd.jp/v1/get?isbn=${isbn}`);
+      const json = await res.json();
+      const cover = json?.[0]?.summary?.cover;
+      if (cover) {
+        coverHtml = `<img src="${cover}" alt="表紙" style="width:100px;height:auto;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);margin-bottom:10px;">`;
+      }
+    } catch(e) {}
+  }
+
+  const isLent = data.status === 'lent';
+  const statusPill = isLent
+    ? '<span class="status-pill pill-over">貸出中</span>'
+    : '<span class="status-pill pill-ok">貸出可能</span>';
+
   document.querySelector('#bookDetailModal .modal-body').innerHTML = `
     <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:52px;margin-bottom:10px;">📗</div>
+      ${coverHtml}
       <div style="font-family:'Noto Serif JP',serif;font-size:18px;font-weight:700;margin-bottom:6px;">${data.title}</div>
       <div style="font-size:13px;color:var(--text3);">${data.author || ''}</div>
-      <div style="margin-top:10px;"><span class="status-pill pill-ok">貸出可能</span></div>
+      <div style="margin-top:10px;">${statusPill}</div>
     </div>
     <div class="divider"></div>
     <div style="display:flex;flex-direction:column;gap:0;">
@@ -3097,7 +3165,10 @@ async function openBookDetail(bookId) {
     </div>
     <div class="divider"></div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="closeModal('bookDetailModal');openModal('lendModal')">📤 貸出する</button>
+      <button class="btn btn-primary" onclick="closeModal('bookDetailModal');openModal('lendModal')" ${isLent ? 'disabled style="opacity:.4;"' : ''}>📤 貸出する</button>
+    </div>
+    <div class="btn-row" style="margin-top:8px;">
+      <button class="btn btn-ghost" onclick="openEditBookModal()">✏️ 編集</button>
     </div>
     <div class="btn-row" style="margin-top:8px;">
       <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange);" onclick="openWithdrawModal()">📤 除籍登録</button>
@@ -3105,6 +3176,41 @@ async function openBookDetail(bookId) {
     </div>
   `;
   openModal('bookDetailModal');
+}
+
+// ============================================================
+// 書籍情報編集
+// ============================================================
+function openEditBookModal() {
+  if (!currentBookData) return;
+  const d = currentBookData;
+  document.getElementById('editTitle').value = d.title || '';
+  document.getElementById('editAuthor').value = d.author || '';
+  document.getElementById('editPublisher').value = d.publisher || '';
+  document.getElementById('editRegNo').value = d.registration_no || '';
+  document.getElementById('editPrice').value = d.price || '';
+  document.getElementById('editDeliveryDate').value = d.delivery_date ? d.delivery_date.slice(0,10) : '';
+  document.getElementById('editFiscalYear').value = d.purchase_fiscal_year || '';
+  closeModal('bookDetailModal');
+  openModal('editBookModal');
+}
+
+async function saveBookEdit() {
+  if (!currentBookId) return;
+  const updates = {
+    title:                document.getElementById('editTitle').value.trim(),
+    author:               document.getElementById('editAuthor').value.trim(),
+    publisher:            document.getElementById('editPublisher').value.trim(),
+    registration_no:      document.getElementById('editRegNo').value.trim() || null,
+    price:                document.getElementById('editPrice').value ? Number(document.getElementById('editPrice').value) : null,
+    delivery_date:        document.getElementById('editDeliveryDate').value || null,
+    purchase_fiscal_year: document.getElementById('editFiscalYear').value ? Number(document.getElementById('editFiscalYear').value) : null,
+  };
+  const { error } = await db.from('books').update(updates).eq('id', currentBookId);
+  if (error) { alert('保存に失敗しました: ' + error.message); return; }
+  closeModal('editBookModal');
+  await loadBooks(currentSchoolCd);
+  await openBookDetail(currentBookId);
 }
 
 // ============================================================
