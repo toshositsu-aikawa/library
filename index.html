@@ -2194,7 +2194,7 @@ async function submitLending(bookId, userId, dueAt) {
 async function submitReturn(lendingId) {
   const { error } = await db
     .from('lendings')
-    .update({ returns_at: new Date().toISOString().slice(0,10) })
+    .update({ returned_at: new Date().toISOString().slice(0,10) })
     .eq('id', lendingId)
   if (error) { alert('返却登録に失敗しました: ' + error.message); return false }
   return true
