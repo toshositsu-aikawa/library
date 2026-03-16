@@ -1162,6 +1162,42 @@ html, body {
       <input class="search-input" id="bookSearchInput" type="search" placeholder="タイトル・著者・ISBNで検索…" />
     </div>
 
+    <!-- あいうえお検索 -->
+    <div id="kanaFilter" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
+      <button class="seg-btn active" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'')">すべて</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'あ')">あ</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'か')">か</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'さ')">さ</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'た')">た</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'な')">な</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'は')">は</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'ま')">ま</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'や')">や</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'ら')">ら</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'わ')">わ</button>
+      <button class="seg-btn" style="flex:none;padding:6px 10px;font-size:13px;" onclick="setKanaFilter(this,'A')">A-Z</button>
+    </div>
+
+    <!-- カテゴリーフィルター -->
+    <div style="margin-bottom:10px;">
+      <select class="form-select" id="categoryFilter" onchange="setCategoryFilter(this.value)" style="font-size:13px;padding:8px 12px;">
+        <option value="">📂 カテゴリーで絞り込み</option>
+        <option value="絵本">絵本</option>
+        <option value="物語・小説">物語・小説</option>
+        <option value="詩・短歌・俳句">詩・短歌・俳句</option>
+        <option value="科学・自然">科学・自然</option>
+        <option value="社会・歴史・地理">社会・歴史・地理</option>
+        <option value="算数・数学">算数・数学</option>
+        <option value="言語・国語">言語・国語</option>
+        <option value="芸術・音楽・体育">芸術・音楽・体育</option>
+        <option value="家庭・生活・技術">家庭・生活・技術</option>
+        <option value="図鑑・事典">図鑑・事典</option>
+        <option value="伝記">伝記</option>
+        <option value="外国語">外国語</option>
+        <option value="総合・その他">総合・その他</option>
+      </select>
+    </div>
+
     <div class="segmented">
       <div class="seg-btn active" onclick="filterBooks(this,'all')">すべて</div>
       <div class="seg-btn" onclick="filterBooks(this,'ok')">貸出可</div>
@@ -1846,6 +1882,25 @@ html, body {
         <label class="form-label">出版社</label>
         <input class="form-input" type="text" id="editPublisher" />
       </div>
+      <div class="form-group">
+        <label class="form-label">カテゴリー</label>
+        <select class="form-select" id="editCategory">
+          <option value="">未設定</option>
+          <option value="絵本">絵本</option>
+          <option value="物語・小説">物語・小説</option>
+          <option value="詩・短歌・俳句">詩・短歌・俳句</option>
+          <option value="科学・自然">科学・自然</option>
+          <option value="社会・歴史・地理">社会・歴史・地理</option>
+          <option value="算数・数学">算数・数学</option>
+          <option value="言語・国語">言語・国語</option>
+          <option value="芸術・音楽・体育">芸術・音楽・体育</option>
+          <option value="家庭・生活・技術">家庭・生活・技術</option>
+          <option value="図鑑・事典">図鑑・事典</option>
+          <option value="伝記">伝記</option>
+          <option value="外国語">外国語</option>
+          <option value="総合・その他">総合・その他</option>
+        </select>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">登録番号</label>
@@ -2214,12 +2269,28 @@ let currentBooksPage = 0;
 const BOOKS_PER_PAGE = 100;
 let currentBooksKeyword = '';
 let currentBooksFilter = 'all';
+let currentKanaFilter = '';
+let currentCategoryFilter = '';
 
 async function loadBooks(schoolCd, keyword = '', filter = 'all') {
   currentBooksKeyword = keyword;
   currentBooksFilter = filter;
   currentBooksPage = 0;
   await renderBooksPage(schoolCd);
+}
+
+function setKanaFilter(el, kana) {
+  currentKanaFilter = kana;
+  currentBooksPage = 0;
+  document.querySelectorAll('#kanaFilter .seg-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderBooksPage(currentSchoolCd);
+}
+
+function setCategoryFilter(val) {
+  currentCategoryFilter = val;
+  currentBooksPage = 0;
+  renderBooksPage(currentSchoolCd);
 }
 
 async function changeBooksPage(delta) {
@@ -2252,6 +2323,30 @@ async function renderBooksPage(schoolCd) {
     query = query.neq('status', 'lent');
   } else if (currentBooksFilter === 'out') {
     query = query.eq('status', 'lent');
+  }
+  if (currentCategoryFilter) {
+    query = query.eq('category', currentCategoryFilter);
+  }
+  // あいうえお検索
+  if (currentKanaFilter) {
+    const kanaMap = {
+      'あ': ['あ','い','う','え','お'],
+      'か': ['か','き','く','け','こ'],
+      'さ': ['さ','し','す','せ','そ'],
+      'た': ['た','ち','つ','て','と'],
+      'な': ['な','に','ぬ','ね','の'],
+      'は': ['は','ひ','ふ','へ','ほ'],
+      'ま': ['ま','み','む','め','も'],
+      'や': ['や','ゆ','よ'],
+      'ら': ['ら','り','る','れ','ろ'],
+      'わ': ['わ','を','ん'],
+      'A': ['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'],
+    };
+    const chars = kanaMap[currentKanaFilter] || [];
+    if (chars.length > 0) {
+      const orCond = chars.map(c => `title.ilike.${c}%`).join(',');
+      query = query.or(orCond);
+    }
   }
 
   const { data, error, count } = await query;
@@ -3225,6 +3320,7 @@ function openEditBookModal() {
   document.getElementById('editTitle').value = d.title || '';
   document.getElementById('editAuthor').value = d.author || '';
   document.getElementById('editPublisher').value = d.publisher || '';
+  document.getElementById('editCategory').value = d.category || '';
   document.getElementById('editRegNo').value = d.registration_no || '';
   document.getElementById('editPrice').value = d.price || '';
   document.getElementById('editDeliveryDate').value = d.delivery_date ? d.delivery_date.slice(0,10) : '';
@@ -3239,6 +3335,7 @@ async function saveBookEdit() {
     title:                document.getElementById('editTitle').value.trim(),
     author:               document.getElementById('editAuthor').value.trim(),
     publisher:            document.getElementById('editPublisher').value.trim(),
+    category:             document.getElementById('editCategory').value || null,
     registration_no:      document.getElementById('editRegNo').value.trim() || null,
     price:                document.getElementById('editPrice').value ? Number(document.getElementById('editPrice').value) : null,
     delivery_date:        document.getElementById('editDeliveryDate').value || null,
@@ -3679,7 +3776,7 @@ async function exportBackupExcel() {
   const PAGE = 1000;
   while (true) {
     const { data, error } = await db.from('books')
-      .select('registration_no, title, author, publisher, isbn, delivery_date, purchase_fiscal_year, price, copies, is_donated, donated_by, status, registered_at')
+      .select('registration_no, title, author, publisher, isbn, category, delivery_date, purchase_fiscal_year, price, copies, is_donated, donated_by, status, registered_at, shelf_id, shelves(name, rooms(name))')
       .eq('school_cd', currentSchoolCd)
       .order('registration_no', { nullsFirst: false })
       .range(from, from + PAGE - 1);
@@ -3712,29 +3809,36 @@ async function exportBackupExcel() {
   const rows = [
     [`${schoolName} 蔵書データ（バックアップ）　出力日: ${today}`],
     [],
-    ['登録番号', '書名', '著者', '出版社', 'ISBN', '納品日', '購入年度', '価格（円）', '冊数', '寄贈', '寄贈者', '状態', '登録日'],
-    ...allBooks.map(b => [
-      b.registration_no || '',
-      b.title || '',
-      b.author || '',
-      b.publisher || '',
-      b.isbn || '',
-      b.delivery_date ? b.delivery_date.slice(0,10) : '',
-      b.purchase_fiscal_year ? b.purchase_fiscal_year + '年度' : '',
-      b.price || '',
-      b.copies || 1,
-      b.is_donated ? '寄贈' : '',
-      b.donated_by || '',
-      b.status === 'withdrawn' ? '除籍' : '在架',
-      b.registered_at ? b.registered_at.slice(0,10) : '',
-    ])
+    ['登録番号', '書名', '著者', '出版社', 'カテゴリー', 'ISBN', '納品日', '購入年度', '価格（円）', '冊数', '寄贈', '寄贈者', '状態', '場所', '登録日'],
+    ...allBooks.map(b => {
+      const roomName = b.shelves?.rooms?.name || '';
+      const shelfName = b.shelves?.name || '';
+      const location = roomName && shelfName ? roomName + ' ／ ' + shelfName : roomName || shelfName || '';
+      return [
+        b.registration_no || '',
+        b.title || '',
+        b.author || '',
+        b.publisher || '',
+        b.category || '',
+        b.isbn || '',
+        b.delivery_date ? b.delivery_date.slice(0,10) : '',
+        b.purchase_fiscal_year ? b.purchase_fiscal_year + '年度' : '',
+        b.price || '',
+        b.copies || 1,
+        b.is_donated ? '寄贈' : '',
+        b.donated_by || '',
+        b.status === 'withdrawn' ? '除籍' : '在架',
+        location,
+        b.registered_at ? b.registered_at.slice(0,10) : '',
+      ];
+    })
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [
-    {wch:10},{wch:36},{wch:20},{wch:18},{wch:16},{wch:12},{wch:10},{wch:10},{wch:5},{wch:5},{wch:14},{wch:5},{wch:12}
+    {wch:10},{wch:36},{wch:20},{wch:18},{wch:14},{wch:16},{wch:12},{wch:10},{wch:10},{wch:5},{wch:5},{wch:14},{wch:5},{wch:20},{wch:12}
   ];
-  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:12}}];
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:14}}];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '蔵書データ');
