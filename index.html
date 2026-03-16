@@ -1510,79 +1510,31 @@ html, body {
     <div class="topbar-school">高峰小学校</div>
   </div>
   <div class="scroll-content">
-    <div class="segmented">
-      <div class="seg-btn active">今月</div>
-      <div class="seg-btn">今学期</div>
-      <div class="seg-btn">今年度</div>
-    </div>
 
     <div class="stat-grid">
       <div class="stat-box blue">
-        <div class="stat-num">1,842</div>
+        <div class="stat-num" id="statsTotal">…</div>
         <div class="stat-label">総蔵書数</div>
       </div>
       <div class="stat-box green">
-        <div class="stat-num">142</div>
+        <div class="stat-num" id="statsMonthLent">…</div>
         <div class="stat-label">今月の貸出</div>
       </div>
       <div class="stat-box yellow">
-        <div class="stat-num">138</div>
+        <div class="stat-num" id="statsMonthReturned">…</div>
         <div class="stat-label">今月の返却</div>
       </div>
       <div class="stat-box red">
-        <div class="stat-num">4</div>
-        <div class="stat-label">累計延滞</div>
+        <div class="stat-num" id="statsOverdue">…</div>
+        <div class="stat-label">現在の延滞</div>
       </div>
     </div>
 
     <div class="section-header-row">
       <div class="section-title-text">よく借りられている本</div>
     </div>
-    <div class="card" style="margin-bottom:14px;">
-      <div class="list-item">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--yellow);width:28px;flex-shrink:0;">1</div>
-        <div class="list-icon">📗</div>
-        <div class="list-info">
-          <div class="list-title">星の王子さま</div>
-          <div class="list-meta">今月 12回貸出</div>
-        </div>
-      </div>
-      <div class="list-item">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--text2);width:28px;flex-shrink:0;">2</div>
-        <div class="list-icon">📘</div>
-        <div class="list-info">
-          <div class="list-title">昆虫の世界 大図鑑</div>
-          <div class="list-meta">今月 9回貸出</div>
-        </div>
-      </div>
-      <div class="list-item">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--text3);width:28px;flex-shrink:0;">3</div>
-        <div class="list-icon">📕</div>
-        <div class="list-info">
-          <div class="list-title">ふしぎの国のアリス</div>
-          <div class="list-meta">今月 8回貸出</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><h2>📅 蔵書点検の記録</h2></div>
-      <div class="list-item">
-        <div class="list-icon" style="font-size:18px;">✅</div>
-        <div class="list-info">
-          <div class="list-title">令和6年度 年度末点検</div>
-          <div class="list-meta">第一小 ／ 所在不明2冊 幽霊本1冊</div>
-        </div>
-        <div class="status-pill pill-ok">完了</div>
-      </div>
-      <div class="list-item">
-        <div class="list-icon" style="font-size:18px;">✅</div>
-        <div class="list-info">
-          <div class="list-title">令和6年度 夏期点検</div>
-          <div class="list-meta">第一小 ／ 所在不明5冊</div>
-        </div>
-        <div class="status-pill pill-ok">完了</div>
-      </div>
+    <div class="card" style="margin-bottom:14px;" id="popularBooksList">
+      <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
     </div>
 
     <!-- 除籍リスト -->
@@ -1652,6 +1604,31 @@ html, body {
           <div style="font-size:24px;margin-bottom:6px;">🔵</div>
           <div style="font-size:13px;font-weight:600;">ライトブルー</div>
         </div>
+      </div>
+    </div>
+
+    <!-- バーコード印刷 -->
+    <div class="section-header-row" style="margin-bottom:10px;">
+      <div class="section-title-text">🏷️ バーコード印刷</div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <div style="padding:14px 16px;">
+
+        <!-- 利用者カード -->
+        <div style="margin-bottom:16px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:10px;">👤 利用者カード</div>
+          <div style="font-size:13px;color:var(--text3);margin-bottom:8px;">IDを改行で区切って複数入力できます</div>
+          <textarea id="userIdInput" rows="4" class="form-input" placeholder="S25001&#10;S25002&#10;S25003" style="font-family:'JetBrains Mono',monospace;font-size:14px;resize:vertical;"></textarea>
+          <button onclick="printUserCards()" style="width:100%;margin-top:8px;padding:12px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;">🖨️ 利用者カードを印刷</button>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:16px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:10px;">📚 本の独自バーコード</div>
+          <div style="font-size:13px;color:var(--text3);margin-bottom:8px;">IDを改行で区切って複数入力できます</div>
+          <textarea id="bookIdInput" rows="4" class="form-input" placeholder="AIK-50301-00001&#10;AIK-50301-00002" style="font-family:'JetBrains Mono',monospace;font-size:14px;resize:vertical;"></textarea>
+          <button onclick="printBookBarcodes()" style="width:100%;margin-top:8px;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ 本のバーコードを印刷</button>
+        </div>
+
       </div>
     </div>
 
@@ -2103,27 +2080,33 @@ html, body {
     <div class="modal-body">
       <div class="callout info">
         <div class="callout-icon">💡</div>
-        <div>ISBNをスキャンすると書名・著者・出版社が自動入力されます</div>
+        <div>ISBNをスキャンすると書名・著者・出版社が自動入力されます。ISBNがない本は独自IDで管理できます。</div>
       </div>
       <div class="form-group">
-        <label class="form-label">ISBN</label>
+        <label class="form-label">ISBN（任意）</label>
         <div class="scan-input-row">
           <input class="scan-isbn" id="addIsbn" type="text" inputmode="numeric" placeholder="978-4-XXXXXXXXXX" />
           <button class="scan-go" style="background:var(--gold);" onclick="fetchAddBookInfo()">↵</button>
         </div>
+        <div style="margin-top:8px;">
+          <button onclick="generateLocalId()" style="font-size:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;color:var(--text2);cursor:pointer;">
+            🏷️ ISBNなし→独自IDを発行
+          </button>
+          <span id="generatedIdLabel" style="font-size:12px;color:var(--blue);margin-left:8px;"></span>
+        </div>
       </div>
       <div class="form-group">
-        <label class="form-label">書名</label>
-        <input class="form-input" id="addTitle" type="text" placeholder="自動入力されます" />
+        <label class="form-label">書名 <span style="color:var(--red);">*</span></label>
+        <input class="form-input" id="addTitle" type="text" placeholder="書名を入力してください" />
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">著者</label>
-          <input class="form-input" id="addAuthor" type="text" placeholder="自動入力" />
+          <input class="form-input" id="addAuthor" type="text" placeholder="著者名" />
         </div>
         <div class="form-group">
           <label class="form-label">出版社</label>
-          <input class="form-input" id="addPublisher" type="text" placeholder="自動入力" />
+          <input class="form-input" id="addPublisher" type="text" placeholder="出版社" />
         </div>
       </div>
       <!-- 寄贈本チェック -->
@@ -2565,6 +2548,184 @@ async function renderBooksPage(schoolCd) {
 }
 
 // ============================================================
+// ============================================================
+// バーコード印刷
+// ============================================================
+async function loadJsBarcode() {
+  if (window.JsBarcode) return;
+  await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function printUserCards() {
+  const input = document.getElementById('userIdInput').value.trim();
+  if (!input) { alert('利用者IDを入力してください'); return; }
+  const ids = input.split('\n').map(s => s.trim()).filter(Boolean);
+  if (ids.length === 0) { alert('有効なIDがありません'); return; }
+  await loadJsBarcode();
+  openPrintWindow(ids, '利用者カード', 'user');
+}
+
+async function printBookBarcodes() {
+  const input = document.getElementById('bookIdInput').value.trim();
+  if (!input) { alert('本のIDを入力してください'); return; }
+  const ids = input.split('\n').map(s => s.trim()).filter(Boolean);
+  if (ids.length === 0) { alert('有効なIDがありません'); return; }
+  await loadJsBarcode();
+  openPrintWindow(ids, '本のバーコード', 'book');
+}
+
+function openPrintWindow(ids, title, type) {
+  const win = window.open('', '_blank', 'width=800,height=600');
+  const cardWidth = type === 'user' ? '85mm' : '70mm';
+  const cardHeight = type === 'user' ? '54mm' : '35mm';
+  const bgColor = type === 'user' ? '#e8f0fe' : '#fff';
+  const label = type === 'user' ? '愛川町図書館　利用者カード' : '愛川町図書館';
+
+  const cardsHtml = ids.map(id => `
+    <div class="card">
+      <div class="card-label">${label}</div>
+      <svg class="barcode" data-id="${id}"></svg>
+      <div class="card-id">${id}</div>
+    </div>
+  `).join('');
+
+  win.document.write(`<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Meiryo UI', sans-serif; background:#f5f5f5; padding:16px; }
+  h1 { font-size:16px; margin-bottom:16px; color:#333; }
+  .grid { display:flex; flex-wrap:wrap; gap:8px; }
+  .card {
+    width:${cardWidth}; height:${cardHeight};
+    background:${bgColor};
+    border:1px solid #ccc;
+    border-radius:6px;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:6px;
+    page-break-inside:avoid;
+  }
+  .card-label { font-size:9px; color:#666; margin-bottom:2px; letter-spacing:0.05em; }
+  .barcode { max-width:100%; height:auto; }
+  .card-id { font-family:monospace; font-size:13px; font-weight:700; margin-top:4px; letter-spacing:0.1em; }
+  @media print {
+    body { background:white; padding:0; }
+    h1 { display:none; }
+    .grid { gap:4px; }
+  }
+  .print-btn {
+    margin-bottom:16px; padding:10px 24px;
+    background:#2563eb; color:white; border:none;
+    border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;
+  }
+</style>
+</head><body>
+<button class="print-btn" onclick="window.print()">🖨️ 印刷する</button>
+<div class="grid">${cardsHtml}</div>
+<script>
+  document.querySelectorAll('.barcode').forEach(svg => {
+    const id = svg.getAttribute('data-id');
+    try {
+      JsBarcode(svg, id, {
+        format: 'CODE128',
+        width: 2,
+        height: 50,
+        displayValue: false,
+        margin: 2,
+      });
+    } catch(e) {
+      svg.parentElement.querySelector('.card-id').style.color = 'red';
+    }
+  });
+<\/script>
+</body></html>`);
+  win.document.close();
+}
+
+// ============================================================
+// 統計ページのデータ読み込み
+// ============================================================
+async function loadStatsPage(schoolCd) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
+
+  // 総蔵書数
+  const { count: totalCount } = await db.from('books')
+    .select('*', { count: 'exact', head: true })
+    .eq('school_cd', schoolCd)
+    .neq('status', 'withdrawn');
+  const el = id => document.getElementById(id);
+  if (el('statsTotal')) el('statsTotal').textContent = Number(totalCount || 0).toLocaleString();
+
+  // 今月の貸出数
+  const { count: lentCount } = await db.from('lendings')
+    .select('*', { count: 'exact', head: true })
+    .eq('school_cd', schoolCd)
+    .gte('lent_at', monthStart);
+  if (el('statsMonthLent')) el('statsMonthLent').textContent = lentCount || 0;
+
+  // 今月の返却数
+  const { count: returnedCount } = await db.from('lendings')
+    .select('*', { count: 'exact', head: true })
+    .eq('school_cd', schoolCd)
+    .gte('returned_at', monthStart);
+  if (el('statsMonthReturned')) el('statsMonthReturned').textContent = returnedCount || 0;
+
+  // 現在の延滞数
+  const { count: overdueCount } = await db.from('lendings')
+    .select('*', { count: 'exact', head: true })
+    .eq('school_cd', schoolCd)
+    .is('returned_at', null)
+    .lt('due_at', today);
+  if (el('statsOverdue')) el('statsOverdue').textContent = overdueCount || 0;
+
+  // よく借りられている本（貸出回数上位）
+  const { data: popularData } = await db.from('lendings')
+    .select('book_id, books(title, isbn)')
+    .eq('school_cd', schoolCd)
+    .not('books', 'is', null);
+
+  const popularList = el('popularBooksList');
+  if (popularList && popularData && popularData.length > 0) {
+    // 集計
+    const counts = {};
+    popularData.forEach(l => {
+      if (!l.books) return;
+      const key = l.book_id;
+      if (!counts[key]) counts[key] = { title: l.books.title, count: 0 };
+      counts[key].count++;
+    });
+    const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
+    const rankColors = ['var(--yellow)', 'var(--text2)', 'var(--text3)', 'var(--text3)', 'var(--text3)'];
+    if (sorted.length > 0) {
+      popularList.innerHTML = sorted.map((b, i) => `
+        <div class="list-item">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i + 1}</div>
+          <div class="list-icon">📗</div>
+          <div class="list-info">
+            <div class="list-title">${b.title}</div>
+            <div class="list-meta">累計 ${b.count}回貸出</div>
+          </div>
+        </div>`).join('');
+    } else {
+      popularList.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">貸出データがありません</div>';
+    }
+  } else if (popularList) {
+    popularList.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">貸出データがありません</div>';
+  }
+}
+
+// ============================================================
 // 学校統計の読み込み
 // ============================================================
 async function loadStats(schoolCd) {
@@ -2772,6 +2933,7 @@ function switchTab(tab) {
   if (tab === 'stats') {
     const el = document.getElementById('backupLastDate');
     if (el) el.textContent = `前回のバックアップ: ${backupDates[currentSchoolCd] || '—'}`;
+    loadStatsPage(currentSchoolCd);
   }
 
   if (tab === 'inv') {
@@ -3398,6 +3560,28 @@ function selectInvSchool(el) {
 // ===== 登録モーダル =====
 function toggleDonatedField(cb) {
   document.getElementById('donatedByWrap').style.display = cb.checked ? 'block' : 'none';
+}
+
+// 独自ID生成（ISBNなし本用）
+// 形式：AIK-学校コード-連番5桁 例：AIK-50301-00001
+async function generateLocalId() {
+  // 既存の独自IDの最大番号を取得
+  const { data } = await db.from('books')
+    .select('isbn')
+    .eq('school_cd', currentSchoolCd)
+    .like('isbn', 'AIK-%')
+    .order('isbn', { ascending: false })
+    .limit(1);
+
+  let nextNum = 1;
+  if (data && data.length > 0) {
+    const lastNum = parseInt(data[0].isbn.split('-')[2]) || 0;
+    nextNum = lastNum + 1;
+  }
+
+  const newId = 'AIK-' + currentSchoolCd + '-' + String(nextNum).padStart(5, '0');
+  document.getElementById('addIsbn').value = newId;
+  document.getElementById('generatedIdLabel').textContent = '発行済み：' + newId;
 }
 
 async function fetchAddBookInfo() {
