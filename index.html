@@ -1089,15 +1089,6 @@ html, body {
       </div>
     </div>
 
-    <!-- 延滞 -->
-    <div class="section-header-row">
-      <div class="section-title-text">⚠️ 延滞中の本</div>
-      <div class="see-all" onclick="switchTab('books')">すべて見る</div>
-    </div>
-    <div class="card" style="margin-bottom:14px;" id="overdueList">
-      <div style="text-align:center;padding:16px;color:var(--text3);font-size:13px;">読み込み中…</div>
-    </div>
-
     <!-- 最近の操作 -->
     <div class="section-header-row">
       <div class="section-title-text">🕐 最近の操作</div>
@@ -2151,38 +2142,6 @@ async function loadStats(schoolCd) {
   if (el('statCopies'))  el('statCopies').textContent  = Number(data.total_copies || 0).toLocaleString()
   if (el('statLent'))    el('statLent').textContent    = data.currently_lent || 0
   if (el('statOverdue')) el('statOverdue').textContent = data.overdue_count  || 0
-
-  // 延滞リストを取得して表示
-  const today = new Date().toISOString().slice(0, 10)
-  const { data: overdues } = await db
-    .from('lendings')
-    .select('*, books(title)')
-    .eq('school_cd', schoolCd)
-    .is('returned_at', null)
-    .lt('due_at', today)
-    .order('due_at', { ascending: true })
-    .limit(5)
-
-  const overdueList = el('overdueList')
-  if (overdueList) {
-    if (!overdues || overdues.length === 0) {
-      overdueList.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px;">延滞中の本はありません</div>'
-    } else {
-      const today2 = new Date()
-      overdueList.innerHTML = overdues.map(o => {
-        const due = new Date(o.due_at)
-        const days = Math.floor((today2 - due) / 86400000)
-        const userId = o.user_id || (o.grade ? `${o.grade} ${o.student_number}番` : '不明')
-        return `<div class="overdue-row">
-          <div class="overdue-days">${days}日超</div>
-          <div class="overdue-info">
-            <div class="overdue-title">${o.books?.title || '不明'}</div>
-            <div class="overdue-meta">利用者ID: ${userId}</div>
-          </div>
-        </div>`
-      }).join('')
-    }
-  }
 
   // 最近の操作（貸出・返却）を取得して表示
   const { data: recent } = await db
