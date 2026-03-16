@@ -3115,11 +3115,19 @@ let currentBookData = null;
 
 async function openBookDetail(bookId) {
   currentBookId = bookId;
-  const { data, error } = await db.from('books').select('*, shelves(name, rooms(name))').eq('id', bookId).single();
-  if (error || !data) return;
+  const { data, error } = await db.from('books').select('*').eq('id', bookId).single();
+  if (error || !data) { alert('本の情報を取得できませんでした'); return; }
   currentBookData = data;
 
-  // 表紙画像をOpenBDから取得
+  // 棚・部屋情報を別途取得
+  let locationText = '—';
+  if (data.shelf_id) {
+    const { data: shelf } = await db.from('shelves').select('name, room_id, rooms(name)').eq('id', data.shelf_id).single();
+    if (shelf) {
+      const roomName = shelf.rooms?.name || '';
+      locationText = roomName ? roomName + ' ／ ' + shelf.name : shelf.name;
+    }
+  }
   let coverHtml = '<div style="font-size:52px;margin-bottom:10px;">📗</div>';
   if (data.isbn) {
     const isbn = data.isbn.replace(/-/g, '');
@@ -3137,11 +3145,6 @@ async function openBookDetail(bookId) {
   const statusPill = isLent
     ? '<span class="status-pill pill-over">貸出中</span>'
     : '<span class="status-pill pill-ok">貸出可能</span>';
-
-  // 部屋・棚情報
-  const shelfName = data.shelves?.name || null;
-  const roomName = data.shelves?.rooms?.name || null;
-  const locationText = roomName && shelfName ? `${roomName} ／ ${shelfName}` : roomName || shelfName || '—';
 
   document.querySelector('#bookDetailModal .modal-body').innerHTML = `
     <div style="text-align:center;margin-bottom:20px;">
