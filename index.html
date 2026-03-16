@@ -401,18 +401,18 @@ html, body {
 
 .scan-mode-btn {
   flex: 1;
-  padding: 10px;
-  border-radius: 10px;
+  padding: 16px 10px;
+  border-radius: 12px;
   border: 1.5px solid var(--border2);
   background: var(--bg3);
   color: var(--text3);
   font-family: 'Noto Sans JP', sans-serif;
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
   text-align: center;
-  min-height: 44px;
+  min-height: 60px;
 }
 .scan-mode-btn:active { background: var(--bg5); }
 .scan-mode-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
@@ -1072,15 +1072,15 @@ html, body {
         <div class="stat-label">総蔵書数（タイトル）</div>
         <div class="stat-sub" style="color:var(--text3);">読込中</div>
       </div>
-      <div class="stat-box green">
+      <div class="stat-box green" onclick="openLentModal()" style="cursor:pointer;">
         <div class="stat-num" id="statLent">…</div>
         <div class="stat-label">貸出中</div>
-        <div class="stat-sub" style="color:var(--text3);">現在の貸出冊数</div>
+        <div class="stat-sub" style="color:var(--text3);">タップで一覧</div>
       </div>
-      <div class="stat-box red">
+      <div class="stat-box red" onclick="openOverdueModal()" style="cursor:pointer;">
         <div class="stat-num" id="statOverdue">…</div>
         <div class="stat-label">延滞中</div>
-        <div class="stat-sub" style="color:var(--red);">要確認</div>
+        <div class="stat-sub" style="color:var(--red);">タップで一覧</div>
       </div>
       <div class="stat-box yellow">
         <div class="stat-num" id="statCopies">…</div>
@@ -1659,6 +1659,34 @@ html, body {
   </div>
 </div>
 
+<!-- 貸出中一覧モーダル -->
+<div class="modal-overlay" id="lentListModal" onclick="closeModalOutside(event,'lentListModal')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">📗 貸出中一覧</div>
+      <button class="modal-close" onclick="closeModal('lentListModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="lentListContent"><div style="text-align:center;padding:20px;color:var(--text3);">読み込み中…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 延滞中一覧モーダル -->
+<div class="modal-overlay" id="overdueListModal" onclick="closeModalOutside(event,'overdueListModal')">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">⚠️ 延滞中一覧</div>
+      <button class="modal-close" onclick="closeModal('overdueListModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="overdueListContent"><div style="text-align:center;padding:20px;color:var(--text3);">読み込み中…</div></div>
+    </div>
+  </div>
+</div>
+
 <!-- 貸出モーダル -->
 <div class="modal-overlay" id="lendModal" onclick="closeModalOutside(event,'lendModal')">
   <div class="modal-sheet">
@@ -2192,6 +2220,63 @@ async function loadStats(schoolCd) {
 // ============================================================
 // 貸出処理
 // ============================================================
+// 貸出中一覧モーダル
+async function openLentModal() {
+  openModal('lentListModal')
+  const { data } = await db
+    .from('lendings')
+    .select('*, books(title, isbn)')
+    .eq('school_cd', currentSchoolCd)
+    .is('returned_at', null)
+    .order('lent_at', { ascending: false })
+  const el = document.getElementById('lentListContent')
+  if (!data || data.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);">貸出中の本はありません</div>'
+    return
+  }
+  el.innerHTML = data.map(o => {
+    const userId = o.user_id || (o.grade ? `${o.grade} ${o.student_number}番` : '不明')
+    const due = o.due_at ? `返却予定: ${o.due_at}` : ''
+    return `<div class="list-item">
+      <div class="list-icon">📗</div>
+      <div class="list-info">
+        <div class="list-title">${o.books?.title || '不明'}</div>
+        <div class="list-meta">${userId}　${due}</div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+// 延滞中一覧モーダル
+async function openOverdueModal() {
+  openModal('overdueListModal')
+  const today = new Date().toISOString().slice(0, 10)
+  const { data } = await db
+    .from('lendings')
+    .select('*, books(title, isbn)')
+    .eq('school_cd', currentSchoolCd)
+    .is('returned_at', null)
+    .lt('due_at', today)
+    .order('due_at', { ascending: true })
+  const el = document.getElementById('overdueListContent')
+  if (!data || data.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);">延滞中の本はありません</div>'
+    return
+  }
+  const today2 = new Date()
+  el.innerHTML = data.map(o => {
+    const userId = o.user_id || (o.grade ? `${o.grade} ${o.student_number}番` : '不明')
+    const days = Math.floor((today2 - new Date(o.due_at)) / 86400000)
+    return `<div class="list-item">
+      <div class="list-icon" style="color:var(--red);font-weight:700;font-size:13px;width:40px;text-align:center;">${days}日</div>
+      <div class="list-info">
+        <div class="list-title">${o.books?.title || '不明'}</div>
+        <div class="list-meta" style="color:var(--red);">${userId}　返却予定: ${o.due_at}</div>
+      </div>
+    </div>`
+  }).join('')
+}
+
 async function confirmLend() {
   const userId = document.getElementById('lendUserId').value.trim();
   const dueAt  = document.getElementById('lendDueAt').value;
