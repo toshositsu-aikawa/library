@@ -2178,6 +2178,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 // 現在選択中の学校CD
 let currentSchoolCd = '50301'
+let loginSchoolCd = '50301' // ログイン時の学校コード（変更不可）
 
 // ===== テーマ切り替え =====
 function setTheme(theme) {
@@ -2222,7 +2223,7 @@ async function doLogin() {
   const schoolName = data.user?.user_metadata?.school_name;
   if (schoolCd) {
     currentSchoolCd = schoolCd;
-    // 学校名を画面に反映
+    loginSchoolCd = schoolCd; // ログイン学校コードを記憶
     document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
     document.getElementById('tab-school-label') && (document.getElementById('tab-school-label').textContent = schoolName);
   }
@@ -2269,6 +2270,7 @@ db.auth.onAuthStateChange(async (event, session) => {
     const schoolName = session.user.user_metadata?.school_name;
     if (schoolCd) {
       currentSchoolCd = schoolCd;
+      loginSchoolCd = schoolCd; // ログイン学校コードを記憶
       document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
     }
     document.getElementById('loginScreen').classList.add('hidden');
@@ -2665,13 +2667,48 @@ function switchSchool(el, cd, name) {
   el.classList.add('selected');
   currentSchoolCd = cd;
   document.getElementById('home-school-label').textContent = name;
-  // 他のタブの学校ラベルも更新
   document.querySelectorAll('.topbar-school').forEach(el => el.textContent = name);
   setTimeout(async () => {
     closeModal('schoolModal');
     await loadStats(cd);
     await loadBooks(cd);
+    updateGuestMode(cd);
   }, 300);
+}
+
+// 他校閲覧モードのUI制御
+function updateGuestMode(cd) {
+  const isGuest = cd !== loginSchoolCd;
+  // ホームの貸出・返却・登録ボタンを制限
+  const hmLend = document.getElementById('hm-lend');
+  const hmRet  = document.getElementById('hm-ret');
+  const hmReg  = document.getElementById('hm-reg');
+  if (hmLend) hmLend.style.opacity = isGuest ? '0.3' : '1';
+  if (hmRet)  hmRet.style.opacity  = isGuest ? '0.3' : '1';
+  if (hmReg)  hmReg.style.opacity  = isGuest ? '0.3' : '1';
+  if (hmLend) hmLend.style.pointerEvents = isGuest ? 'none' : '';
+  if (hmRet)  hmRet.style.pointerEvents  = isGuest ? 'none' : '';
+  if (hmReg)  hmReg.style.pointerEvents  = isGuest ? 'none' : '';
+  // ISBNスキャン入力欄も制限
+  const homeIsbn = document.getElementById('homeIsbn');
+  const scanGo = document.querySelector('.scan-go');
+  if (homeIsbn) homeIsbn.disabled = isGuest;
+  if (scanGo)   scanGo.style.opacity = isGuest ? '0.3' : '1';
+  if (scanGo)   scanGo.style.pointerEvents = isGuest ? 'none' : '';
+  // 他校モードの案内バナー
+  let banner = document.getElementById('guestBanner');
+  if (isGuest) {
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'guestBanner';
+      banner.style.cssText = 'background:var(--blue-dim);border:1px solid var(--blue);border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:13px;color:var(--blue);';
+      banner.textContent = '👁️ 他校の蔵書を閲覧中です。貸出・登録などの操作はできません。';
+      const scrollContent = document.querySelector('#screen-home .scroll-content');
+      if (scrollContent) scrollContent.insertBefore(banner, scrollContent.firstChild);
+    }
+  } else {
+    if (banner) banner.remove();
+  }
 }
 
 // 学校モーダルを開くときに冊数を読み込む
@@ -3358,6 +3395,7 @@ async function openBookDetail(bookId) {
       </div>
     </div>
     <div class="divider"></div>
+    ${currentSchoolCd === loginSchoolCd ? `
     <div class="btn-row">
       <button class="btn btn-primary" onclick="closeModal('bookDetailModal');openModal('lendModal')" ${isLent ? 'disabled style="opacity:.4;"' : ''}>📤 貸出する</button>
     </div>
@@ -3368,6 +3406,9 @@ async function openBookDetail(bookId) {
       <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange);" onclick="openWithdrawModal()">📤 除籍登録</button>
       <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red);" onclick="confirmDeleteBook()">🗑️ 削除</button>
     </div>
+    ` : `
+    <div style="text-align:center;padding:12px;font-size:13px;color:var(--text3);">👁️ 他校の蔵書は閲覧のみです</div>
+    `}
   `;
   openModal('bookDetailModal');
 }
