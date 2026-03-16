@@ -2256,16 +2256,25 @@ async function renderBooksPage(schoolCd) {
     return;
   }
 
-  list.innerHTML = data.map(b => `
+  list.innerHTML = data.map(b => {
+    const isbn = b.isbn ? b.isbn.replace(/-/g, '') : '';
+    const coverUrl = isbn ? `https://cover.openbd.jp/${isbn}.jpg` : '';
+    const iconHtml = coverUrl
+      ? `<img src="${coverUrl}" alt="" style="width:40px;height:52px;object-fit:cover;border-radius:4px;flex-shrink:0;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="list-icon" style="display:none;">📗</div>`
+      : `<div class="list-icon">📗</div>`;
+    const statusPill = b.status === 'lent'
+      ? '<div class="status-pill pill-over">貸出中</div>'
+      : '<div class="status-pill pill-ok">貸出可</div>';
+    return `
     <div class="list-item" onclick="openBookDetail(${b.id})">
-      <div class="list-icon">📗</div>
+      ${iconHtml}
       <div class="list-info">
         <div class="list-title">${b.title}${b.is_donated ? ' <span style="font-size:.7em;background:var(--gold-dim);color:var(--gold);padding:1px 6px;border-radius:8px;margin-left:4px;">🎁寄贈</span>' : ''}</div>
         <div class="list-meta">${[b.author, b.publisher].filter(Boolean).join(' ／ ')}${b.donated_by ? ' ／ 寄贈：'+b.donated_by : ''}</div>
       </div>
-      <div class="status-pill pill-ok">貸出可</div>
-    </div>
-  `).join('');
+      ${statusPill}
+    </div>`;
+  }).join('');
 
   // ページネーションUI更新
   const totalPages = Math.ceil((count || 0) / BOOKS_PER_PAGE);
@@ -3106,7 +3115,7 @@ let currentBookData = null;
 
 async function openBookDetail(bookId) {
   currentBookId = bookId;
-  const { data, error } = await db.from('books').select('*').eq('id', bookId).single();
+  const { data, error } = await db.from('books').select('*, shelves(name, rooms(name))').eq('id', bookId).single();
   if (error || !data) return;
   currentBookData = data;
 
@@ -3129,6 +3138,11 @@ async function openBookDetail(bookId) {
     ? '<span class="status-pill pill-over">貸出中</span>'
     : '<span class="status-pill pill-ok">貸出可能</span>';
 
+  // 部屋・棚情報
+  const shelfName = data.shelves?.name || null;
+  const roomName = data.shelves?.rooms?.name || null;
+  const locationText = roomName && shelfName ? `${roomName} ／ ${shelfName}` : roomName || shelfName || '—';
+
   document.querySelector('#bookDetailModal .modal-body').innerHTML = `
     <div style="text-align:center;margin-bottom:20px;">
       ${coverHtml}
@@ -3138,6 +3152,10 @@ async function openBookDetail(bookId) {
     </div>
     <div class="divider"></div>
     <div style="display:flex;flex-direction:column;gap:0;">
+      <div class="overdue-row" style="padding:12px 0;">
+        <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">場所</div>
+        <div style="font-size:14px;font-weight:500;">${locationText}</div>
+      </div>
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">登録番号</div>
         <div style="font-size:14px;font-weight:500;">${data.registration_no || '—'}</div>
@@ -3153,10 +3171,6 @@ async function openBookDetail(bookId) {
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">購入年度</div>
         <div style="font-size:14px;font-weight:500;">${data.purchase_fiscal_year ? data.purchase_fiscal_year+'年度' : data.delivery_date ? data.delivery_date.slice(0,4)+'年' : '—'}</div>
-      </div>
-      <div class="overdue-row" style="padding:12px 0;">
-        <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">価格</div>
-        <div style="font-size:14px;font-weight:500;">${data.price ? '¥'+data.price.toLocaleString() : '—'}</div>
       </div>
       <div class="overdue-row" style="padding:12px 0;border:none;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">ISBN</div>
