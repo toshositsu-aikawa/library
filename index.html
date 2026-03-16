@@ -1102,6 +1102,12 @@ html, body {
         <button class="scan-mode-btn mode-return" id="hm-ret" onclick="setScanMode('ret')">📥 返却</button>
         <button class="scan-mode-btn mode-register" id="hm-reg" onclick="setScanMode('reg')">➕ 登録</button>
       </div>
+      <!-- 登録時の場所選択（登録モード時のみ表示） -->
+      <div id="regShelfRow" style="display:none;margin-bottom:10px;">
+        <select class="form-select" id="regShelfId" style="font-size:14px;">
+          <option value="">📍 場所を選択（任意）</option>
+        </select>
+      </div>
       <div class="scan-input-row">
         <input class="scan-isbn" id="homeIsbn" type="text" inputmode="numeric" placeholder="スキャンまたはISBNを入力…" autocomplete="off" />
         <button class="scan-go" onclick="handleHomeScan()">↵</button>
@@ -1922,6 +1928,12 @@ html, body {
           <input class="form-input" type="number" id="editFiscalYear" placeholder="2024" />
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">場所（部屋・棚）</label>
+        <select class="form-select" id="editShelfId">
+          <option value="">未設定</option>
+        </select>
+      </div>
       <div class="btn-row" style="margin-top:8px;">
         <button class="btn btn-ghost" onclick="closeModal('editBookModal')">キャンセル</button>
         <button class="btn btn-primary" onclick="saveBookEdit()">💾 保存</button>
@@ -2680,6 +2692,12 @@ function setScanMode(mode) {
     const btn = document.getElementById('hm-' + m);
     btn.classList.toggle('active', m === mode);
   });
+  // 登録モード時のみ場所選択を表示・棚リストを読み込む
+  const regShelfRow = document.getElementById('regShelfRow');
+  if (regShelfRow) {
+    regShelfRow.style.display = mode === 'reg' ? 'block' : 'none';
+    if (mode === 'reg') loadShelvesIntoSelect('regShelfId');
+  }
   document.getElementById('homeIsbn').focus();
 }
 
@@ -2711,7 +2729,8 @@ async function handleHomeScan() {
     // 書誌情報取得して登録モーダル表示
     fb.innerHTML = `<div class="feedback" style="opacity:.6"><div class="fb-icon">🔍</div><div><div class="fb-title">書誌情報を検索中…</div><div class="fb-isbn">${val}</div></div></div>`;
     const info = await fetchBookInfo(val);
-    showRegisterModal(val, info);
+    const regShelfId = document.getElementById('regShelfId')?.value || null;
+    showRegisterModal(val, info, regShelfId);
 
   } else if (scanMode === 'lend') {
     // 貸出モード
@@ -2932,14 +2951,14 @@ async function fetchBookInfo(isbn) {
 let pendingBookData = null;
 
 // 未登録本を登録するモーダルを表示
-function showRegisterModal(isbn, bookInfo) {
+function showRegisterModal(isbn, bookInfo, shelfId = null) {
   const title = bookInfo ? bookInfo.title : '（書誌情報なし）';
   const author = bookInfo ? (bookInfo.author || '') : '';
   const publisher = bookInfo ? (bookInfo.publisher || '') : '';
   const price = bookInfo ? (bookInfo.price || null) : null;
 
   // データを一時保存（クォート問題を回避）
-  pendingBookData = { isbn, title, author, publisher, price };
+  pendingBookData = { isbn, title, author, publisher, price, shelfId };
 
   // 既存モーダルがあれば削除
   const existing = document.getElementById('unregModal');
@@ -2973,11 +2992,45 @@ function showRegisterModal(isbn, bookInfo) {
     </div>`;
   document.body.appendChild(modal);
 
-  document.getElementById('unregRegisterBtn').addEventListener('click', registerUnknownBook);
+  document.getElementById('unregRegisterBtn').addEventListener('click', registerHomeBook);
   document.getElementById('unregSkipBtn').addEventListener('click', () => {
     document.getElementById('unregModal').remove();
-    document.getElementById('invIsbn').focus();
+    document.getElementById('homeIsbn')?.focus();
   });
+}
+
+// ホーム画面からの書籍登録（場所情報付き）
+async function registerHomeBook() {
+  if (!pendingBookData) return;
+  const { isbn, title, author, publisher, price, shelfId } = pendingBookData;
+
+  const modal = document.getElementById('unregModal');
+  if (modal) modal.remove();
+  const fb = document.getElementById('homeFeedback');
+
+  const insertData = {
+    school_cd: currentSchoolCd,
+    isbn: isbn,
+    title: title,
+    author: author || null,
+    publisher: publisher || null,
+    price: price || null,
+    copies: 1,
+    registered_at: new Date().toISOString().slice(0,10),
+  };
+  if (shelfId) insertData.shelf_id = Number(shelfId);
+
+  const { error } = await db.from('books').insert(insertData);
+  pendingBookData = null;
+
+  if (error) {
+    if (fb) fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❌</div><div><div class="fb-title">登録失敗</div><div class="fb-body">${error.message}</div></div></div>`;
+  } else {
+    if (fb) fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">登録完了</div><div class="fb-body">${title} を蔵書に追加しました</div></div></div>`;
+    await loadStats(currentSchoolCd);
+    await loadBooks(currentSchoolCd);
+  }
+  document.getElementById('homeIsbn')?.focus();
 }
 
 async function registerUnknownBook() {
@@ -3322,6 +3375,33 @@ async function openBookDetail(bookId) {
 // ============================================================
 // 書籍情報編集
 // ============================================================
+// 棚リストをselectに読み込む共通関数
+async function loadShelvesIntoSelect(selectId, currentShelfId = null) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const { data: rooms } = await db.from('rooms')
+    .select('id, name, shelves(id, name)')
+    .eq('school_cd', currentSchoolCd)
+    .order('name');
+  sel.innerHTML = '<option value="">未設定</option>';
+  if (rooms) {
+    rooms.forEach(room => {
+      if (room.shelves && room.shelves.length > 0) {
+        const grp = document.createElement('optgroup');
+        grp.label = room.name;
+        room.shelves.forEach(shelf => {
+          const opt = document.createElement('option');
+          opt.value = shelf.id;
+          opt.textContent = shelf.name;
+          if (currentShelfId && shelf.id == currentShelfId) opt.selected = true;
+          grp.appendChild(opt);
+        });
+        sel.appendChild(grp);
+      }
+    });
+  }
+}
+
 function openEditBookModal() {
   if (!currentBookData) return;
   const d = currentBookData;
@@ -3333,12 +3413,14 @@ function openEditBookModal() {
   document.getElementById('editPrice').value = d.price || '';
   document.getElementById('editDeliveryDate').value = d.delivery_date ? d.delivery_date.slice(0,10) : '';
   document.getElementById('editFiscalYear').value = d.purchase_fiscal_year || '';
+  loadShelvesIntoSelect('editShelfId', d.shelf_id);
   closeModal('bookDetailModal');
   openModal('editBookModal');
 }
 
 async function saveBookEdit() {
   if (!currentBookId) return;
+  const shelfVal = document.getElementById('editShelfId').value;
   const updates = {
     title:                document.getElementById('editTitle').value.trim(),
     author:               document.getElementById('editAuthor').value.trim(),
@@ -3348,6 +3430,7 @@ async function saveBookEdit() {
     price:                document.getElementById('editPrice').value ? Number(document.getElementById('editPrice').value) : null,
     delivery_date:        document.getElementById('editDeliveryDate').value || null,
     purchase_fiscal_year: document.getElementById('editFiscalYear').value ? Number(document.getElementById('editFiscalYear').value) : null,
+    shelf_id:             shelfVal ? Number(shelfVal) : null,
   };
   const { error } = await db.from('books').update(updates).eq('id', currentBookId);
   if (error) { alert('保存に失敗しました: ' + error.message); return; }
