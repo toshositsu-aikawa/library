@@ -1169,15 +1169,22 @@ html, body {
       <div class="seg-btn" onclick="filterBooks(this,'donated')" style="color:var(--gold);">🎁 寄贈</div>
     </div>
 
+    <!-- ページネーション（上） -->
+    <div id="bookPagerTop" style="display:none;padding:8px 0 8px;display:flex;align-items:center;justify-content:center;gap:12px;">
+      <button id="bookPagerPrevTop" onclick="changeBooksPage(-1)" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 18px;color:var(--text);font-size:.9em;cursor:pointer;">‹ 前へ</button>
+      <span id="bookPagerLabelTop" style="font-size:.85em;color:var(--text2);"></span>
+      <button id="bookPagerNextTop" onclick="changeBooksPage(1)" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 18px;color:var(--text);font-size:.9em;cursor:pointer;">次へ ›</button>
+    </div>
+
     <div class="card" id="bookList">
       <div style="text-align:center;color:var(--text3);padding:32px;">読み込み中…</div>
     </div>
 
-    <!-- ページネーション -->
+    <!-- ページネーション（下） -->
     <div id="bookPager" style="display:none;padding:8px 0 16px;display:flex;align-items:center;justify-content:center;gap:12px;">
-      <button id="bookPagerPrev" onclick="changeBooksPage(-1)" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 18px;color:var(--text1);font-size:.9em;cursor:pointer;">‹ 前へ</button>
+      <button id="bookPagerPrev" onclick="changeBooksPage(-1)" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 18px;color:var(--text);font-size:.9em;cursor:pointer;">‹ 前へ</button>
       <span id="bookPagerLabel" style="font-size:.85em;color:var(--text2);"></span>
-      <button id="bookPagerNext" onclick="changeBooksPage(1)" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 18px;color:var(--text1);font-size:.9em;cursor:pointer;">次へ ›</button>
+      <button id="bookPagerNext" onclick="changeBooksPage(1)" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 18px;color:var(--text);font-size:.9em;cursor:pointer;">次へ ›</button>
     </div>
   </div>
 </div>
@@ -2233,7 +2240,6 @@ async function renderBooksPage(schoolCd) {
     .from('books')
     .select('*', { count: 'exact' })
     .eq('school_cd', schoolCd)
-    .eq('status', 'normal')
     .order('title')
     .range(from, to);
 
@@ -2242,6 +2248,10 @@ async function renderBooksPage(schoolCd) {
   }
   if (currentBooksFilter === 'donated') {
     query = query.eq('is_donated', true);
+  } else if (currentBooksFilter === 'ok') {
+    query = query.neq('status', 'lent');
+  } else if (currentBooksFilter === 'out') {
+    query = query.eq('status', 'lent');
   }
 
   const { data, error, count } = await query;
@@ -2276,19 +2286,30 @@ async function renderBooksPage(schoolCd) {
       + '</div>';
   }).join('');
 
-  // ページネーションUI更新
+  // ページネーションUI更新（上下両方）
   const totalPages = Math.ceil((count || 0) / BOOKS_PER_PAGE);
   const pager = document.getElementById('bookPager');
+  const pagerTop = document.getElementById('bookPagerTop');
+  const labelText = `${currentBooksPage + 1} / ${totalPages} ページ（全${(count||0).toLocaleString()}件）`;
+  const isPrevDisabled = currentBooksPage === 0;
+  const isNextDisabled = currentBooksPage >= totalPages - 1;
+
   if (totalPages <= 1) {
     pager.style.display = 'none';
+    pagerTop.style.display = 'none';
   } else {
     pager.style.display = 'flex';
-    document.getElementById('bookPagerLabel').textContent =
-      `${currentBooksPage + 1} / ${totalPages} ページ（全${(count||0).toLocaleString()}件）`;
-    document.getElementById('bookPagerPrev').disabled = currentBooksPage === 0;
-    document.getElementById('bookPagerPrev').style.opacity = currentBooksPage === 0 ? '0.3' : '1';
-    document.getElementById('bookPagerNext').disabled = currentBooksPage >= totalPages - 1;
-    document.getElementById('bookPagerNext').style.opacity = currentBooksPage >= totalPages - 1 ? '0.3' : '1';
+    pagerTop.style.display = 'flex';
+    document.getElementById('bookPagerLabel').textContent = labelText;
+    document.getElementById('bookPagerLabelTop').textContent = labelText;
+    document.getElementById('bookPagerPrev').disabled = isPrevDisabled;
+    document.getElementById('bookPagerPrev').style.opacity = isPrevDisabled ? '0.3' : '1';
+    document.getElementById('bookPagerNext').disabled = isNextDisabled;
+    document.getElementById('bookPagerNext').style.opacity = isNextDisabled ? '0.3' : '1';
+    document.getElementById('bookPagerPrevTop').disabled = isPrevDisabled;
+    document.getElementById('bookPagerPrevTop').style.opacity = isPrevDisabled ? '0.3' : '1';
+    document.getElementById('bookPagerNextTop').disabled = isNextDisabled;
+    document.getElementById('bookPagerNextTop').style.opacity = isNextDisabled ? '0.3' : '1';
   }
 }
 
