@@ -63,7 +63,7 @@
   --gold:      #d4a543;
   --gold-dim:  rgba(212,165,67,0.12);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --tab-h: 72px;
+  --tab-h: 88px;
 }
 
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
@@ -86,7 +86,7 @@ html, body {
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   padding: 0 20px;
-  height: 56px;
+  height: 68px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -96,16 +96,16 @@ html, body {
 
 .topbar-title {
   font-family: 'Noto Serif JP', serif;
-  font-size: 17px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text);
 }
 
 .topbar-school {
-  font-size: 12px;
+  font-size: 15px;
   color: var(--blue);
   background: var(--blue-dim);
-  padding: 4px 10px;
+  padding: 6px 14px;
   border-radius: 20px;
   font-weight: 500;
 }
@@ -113,12 +113,12 @@ html, body {
 .topbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
 .icon-btn {
-  width: 44px; height: 44px;
-  border-radius: 10px;
+  width: 52px; height: 52px;
+  border-radius: 12px;
   background: var(--bg3);
   border: 1px solid var(--border2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
+  font-size: 24px;
   cursor: pointer;
   transition: background 0.15s;
   color: var(--text2);
@@ -162,13 +162,13 @@ html, body {
 .tab-item:active { background: var(--bg3); }
 
 .tab-icon {
-  font-size: 28px;
+  font-size: 34px;
   line-height: 1;
   transition: transform 0.2s;
 }
 
 .tab-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text3);
   transition: color 0.2s;
@@ -275,20 +275,20 @@ html, body {
   background: var(--bg2);
   border: 1px solid var(--border2);
   border-radius: 14px;
-  padding: 20px 16px;
+  padding: 24px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   transition: all 0.15s;
-  min-height: 90px;
+  min-height: 110px;
 }
 
 .action-btn:active { background: var(--bg4); transform: scale(0.97); }
 
-.action-btn .action-icon { font-size: 40px; }
-.action-btn .action-label { font-size: 15px; font-weight: 600; color: var(--text); }
+.action-btn .action-icon { font-size: 48px; }
+.action-btn .action-label { font-size: 16px; font-weight: 600; color: var(--text); }
 .action-btn .action-sub { font-size: 12px; color: var(--text3); }
 
 .action-btn.primary { background: var(--blue-dim); border-color: rgba(91,156,246,0.25); }
@@ -1044,7 +1044,7 @@ html, body {
     <div class="topbar-school" id="home-school-label">高峰小学校</div>
     <div class="topbar-right">
       <div class="icon-btn" onclick="openModal('schoolModal')">🏫</div>
-      <div class="icon-btn" onclick="doLogout()" style="font-size:.75em;color:var(--text3);">退出</div>
+      <div class="icon-btn" onclick="doLogout()" style="font-size:1em;color:var(--text3);">退出</div>
     </div>
   </div>
 
