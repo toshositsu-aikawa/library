@@ -1167,6 +1167,7 @@ html, body {
       <div class="search-icon">🔍</div>
       <input class="search-input" id="bookSearchInput" type="search" placeholder="タイトル・著者・ISBNで検索…" />
     </div>
+    <button onclick="openCrossSearchModal()" style="width:100%;padding:12px;background:var(--blue-dim);border:1px solid var(--blue);border-radius:10px;color:var(--blue);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">🌐 町内全校を横断検索</button>
 
     <!-- あいうえお検索 -->
     <div id="kanaFilter" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
@@ -1868,6 +1869,25 @@ html, body {
   </div>
 </div>
 
+<!-- 町内横断検索モーダル -->
+<div class="modal-overlay" id="crossSearchModal" onclick="closeModalOutside(event,'crossSearchModal')">
+  <div class="modal-sheet" style="max-height:90vh;">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">🌐 町内全校横断検索</div>
+      <button class="modal-close" onclick="closeModal('crossSearchModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="search-wrap" style="margin-bottom:12px;">
+        <div class="search-icon">🔍</div>
+        <input class="search-input" id="crossSearchInput" type="search" placeholder="タイトル・著者・ISBNで検索…" />
+      </div>
+      <button onclick="runCrossSearch()" style="width:100%;padding:14px;background:var(--blue);border:none;border-radius:10px;color:white;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">検索</button>
+      <div id="crossSearchResults"><div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">キーワードを入力して検索してください</div></div>
+    </div>
+  </div>
+</div>
+
 <!-- 本の編集モーダル -->
 <div class="modal-overlay" id="editBookModal" onclick="closeModalOutside(event,'editBookModal')">
   <div class="modal-sheet">
@@ -2221,10 +2241,17 @@ async function doLogin() {
 
   const schoolCd = data.user?.user_metadata?.school_cd;
   const schoolName = data.user?.user_metadata?.school_name;
+  const role = data.user?.user_metadata?.role;
   if (schoolCd) {
-    currentSchoolCd = schoolCd;
-    loginSchoolCd = schoolCd; // ログイン学校コードを記憶
-    document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+    loginSchoolCd = schoolCd;
+    if (role === 'admin') {
+      // 管理者は最初の学校（高峰小）から開始
+      currentSchoolCd = '50301';
+      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
+    } else {
+      currentSchoolCd = schoolCd;
+      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+    }
     document.getElementById('tab-school-label') && (document.getElementById('tab-school-label').textContent = schoolName);
   }
 
@@ -2268,10 +2295,16 @@ db.auth.onAuthStateChange(async (event, session) => {
   if (session?.user) {
     const schoolCd = session.user.user_metadata?.school_cd;
     const schoolName = session.user.user_metadata?.school_name;
+    const role = session.user.user_metadata?.role;
     if (schoolCd) {
-      currentSchoolCd = schoolCd;
-      loginSchoolCd = schoolCd; // ログイン学校コードを記憶
-      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+      loginSchoolCd = schoolCd;
+      if (role === 'admin') {
+        currentSchoolCd = '50301';
+        document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
+      } else {
+        currentSchoolCd = schoolCd;
+        document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+      }
     }
     document.getElementById('loginScreen').classList.add('hidden');
   }
@@ -2678,7 +2711,7 @@ function switchSchool(el, cd, name) {
 
 // 他校閲覧モードのUI制御
 function updateGuestMode(cd) {
-  const isGuest = cd !== loginSchoolCd;
+  const isGuest = loginSchoolCd !== 'admin' && cd !== loginSchoolCd;
   // ホームの貸出・返却・登録ボタンを制限
   const hmLend = document.getElementById('hm-lend');
   const hmRet  = document.getElementById('hm-ret');
@@ -3395,7 +3428,7 @@ async function openBookDetail(bookId) {
       </div>
     </div>
     <div class="divider"></div>
-    ${currentSchoolCd === loginSchoolCd ? `
+    ${(currentSchoolCd === loginSchoolCd || loginSchoolCd === 'admin') ? `
     <div class="btn-row">
       <button class="btn btn-primary" onclick="closeModal('bookDetailModal');openModal('lendModal')" ${isLent ? 'disabled style="opacity:.4;"' : ''}>📤 貸出する</button>
     </div>
@@ -3412,6 +3445,92 @@ async function openBookDetail(bookId) {
   `;
   openModal('bookDetailModal');
 }
+
+// ============================================================
+// 町内横断検索
+// ============================================================
+const SCHOOLS = [
+  { cd: '50301', name: '高峰小学校' },
+  { cd: '50302', name: '半原小学校' },
+  { cd: '50303', name: '中津第２小学校' },
+  { cd: '50304', name: '菅原小学校' },
+  { cd: '50305', name: '中津小学校' },
+  { cd: '50306', name: '田代小学校' },
+  { cd: '50401', name: '愛川中学校' },
+  { cd: '50402', name: '愛川東中学校' },
+  { cd: '50403', name: '愛川中原中学校' },
+];
+
+function openCrossSearchModal() {
+  openModal('crossSearchModal');
+  setTimeout(() => document.getElementById('crossSearchInput').focus(), 300);
+}
+
+async function runCrossSearch() {
+  const keyword = document.getElementById('crossSearchInput').value.trim();
+  if (!keyword) { alert('検索キーワードを入力してください'); return; }
+
+  const resultsEl = document.getElementById('crossSearchResults');
+  resultsEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;">検索中…</div>';
+
+  const { data, error } = await db.from('books')
+    .select('id, title, author, publisher, isbn, status, category, school_cd, shelves(name, rooms(name))')
+    .or(`title.ilike.%${keyword}%,author.ilike.%${keyword}%,isbn.ilike.%${keyword}%,publisher.ilike.%${keyword}%`)
+    .neq('status', 'withdrawn')
+    .order('school_cd')
+    .limit(200);
+
+  if (error) {
+    resultsEl.innerHTML = '<div style="text-align:center;color:var(--red);padding:20px;">検索に失敗しました</div>';
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    resultsEl.innerHTML = `<div style="text-align:center;color:var(--text3);padding:20px;">「${keyword}」に一致する本は見つかりませんでした</div>`;
+    return;
+  }
+
+  // 学校ごとにグループ化
+  const grouped = {};
+  data.forEach(b => {
+    if (!grouped[b.school_cd]) grouped[b.school_cd] = [];
+    grouped[b.school_cd].push(b);
+  });
+
+  resultsEl.innerHTML = `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">全${data.length}件 ／ ${Object.keys(grouped).length}校に所蔵</div>
+    ${SCHOOLS.filter(s => grouped[s.cd]).map(s => {
+      const books = grouped[s.cd];
+      return `<div style="margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;color:var(--blue);margin-bottom:6px;padding:6px 10px;background:var(--blue-dim);border-radius:8px;">
+          📚 ${s.name}（${books.length}冊）
+        </div>
+        ${books.map(b => {
+          const location = b.shelves?.rooms?.name && b.shelves?.name
+            ? b.shelves.rooms.name + ' ／ ' + b.shelves.name
+            : b.shelves?.name || '場所未登録';
+          const statusBadge = b.status === 'lent'
+            ? '<span style="font-size:11px;background:var(--red-dim);color:var(--red);padding:2px 6px;border-radius:6px;margin-left:6px;">貸出中</span>'
+            : '<span style="font-size:11px;background:var(--green-dim);color:var(--green);padding:2px 6px;border-radius:6px;margin-left:6px;">貸出可</span>';
+          return `<div style="padding:10px 4px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${b.title}${statusBadge}</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:2px;">${[b.author, b.publisher].filter(Boolean).join(' ／ ')}</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px;">📍 ${location}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('')}
+  `;
+}
+
+// 横断検索のEnterキー対応
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('crossSearchInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') runCrossSearch();
+  });
+});
 
 // ============================================================
 // 書籍情報編集
