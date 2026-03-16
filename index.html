@@ -1076,6 +1076,13 @@ html, body {
     </div>
     <button class="login-btn" id="loginBtn" onclick="doLogin()">ログイン</button>
     <div class="login-error" id="loginError"></div>
+    <div style="margin-top:16px;text-align:center;">
+      <div style="font-size:12px;color:#555;margin-bottom:8px;">────── または ──────</div>
+      <button onclick="enterDemoMode()" style="width:100%;padding:12px;background:transparent;border:1.5px solid #5b9cf6;border-radius:12px;color:#5b9cf6;font-size:14px;font-weight:600;cursor:pointer;">
+        🎮 デモモードで試す
+      </button>
+      <div style="font-size:11px;color:#555;margin-top:8px;">ログイン不要・操作を自由に練習できます</div>
+    </div>
   </div>
 </div>
 
@@ -2222,6 +2229,100 @@ function setTheme(theme) {
 })()
 
 // ===== ログイン処理 =====
+// ===== デモモード =====
+let isDemoMode = false;
+
+async function enterDemoMode() {
+  isDemoMode = true;
+  loginSchoolCd = 'demo';
+  currentSchoolCd = 'demo';
+
+  document.querySelectorAll('.topbar-school').forEach(el => el.textContent = 'デモ図書館');
+  document.getElementById('loginScreen').classList.add('hidden');
+
+  // デモバナーを表示
+  showDemoBanner();
+
+  await loadStats('demo');
+  await loadBooks('demo');
+}
+
+function showDemoBanner() {
+  let banner = document.getElementById('demoBanner');
+  if (banner) return;
+  banner = document.createElement('div');
+  banner.id = 'demoBanner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#f59e0b,#d97706);color:#1a1000;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700;';
+  banner.innerHTML = `
+    <span>🎮 デモモード：操作を自由に練習できます</span>
+    <div style="display:flex;gap:8px;">
+      <button onclick="resetDemoData()" style="background:rgba(0,0,0,0.2);border:none;border-radius:8px;padding:6px 12px;color:#1a1000;font-weight:700;cursor:pointer;font-size:12px;">🔄 リセット</button>
+      <button onclick="exitDemoMode()" style="background:rgba(0,0,0,0.2);border:none;border-radius:8px;padding:6px 12px;color:#1a1000;font-weight:700;cursor:pointer;font-size:12px;">✕ 終了</button>
+    </div>
+  `;
+  document.body.prepend(banner);
+  // コンテンツを少し下げる
+  document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '44px');
+}
+
+async function resetDemoData() {
+  if (!confirm('デモデータをリセットしますか？\n追加・削除した本や貸出記録がすべて初期状態に戻ります。')) return;
+
+  // デモの貸出記録を削除
+  await db.from('lendings').delete().eq('school_cd', 'demo');
+  // デモの蔵書を削除（元データ以外）
+  await db.from('books').delete().eq('school_cd', 'demo');
+
+  // 初期データを再投入
+  const initBooks = [
+    {title:'いないいないばあ',author:'松谷みよ子',publisher:'ポプラ社',isbn:'9784591012779',category:'絵本',status:'lent'},
+    {title:'ぐりとぐら',author:'中川李枝子',publisher:'福音館書店',isbn:'9784834000825',category:'絵本',status:'normal'},
+    {title:'はらぺこあおむし',author:'エリック・カール',publisher:'偕成社',isbn:'9784032000503',category:'絵本',status:'normal'},
+    {title:'スイミー',author:'レオ・レオニ',publisher:'好学社',isbn:'9784769000167',category:'絵本',status:'normal'},
+    {title:'100万回生きたねこ',author:'佐野洋子',publisher:'講談社',isbn:'9784061272347',category:'絵本',status:'normal'},
+    {title:'エルマーのぼうけん',author:'ルース・スタイルス・ガネット',publisher:'福音館書店',isbn:'9784834000122',category:'物語・小説',status:'normal'},
+    {title:'赤毛のアン',author:'モンゴメリ',publisher:'新潮社',isbn:'9784102090015',category:'物語・小説',status:'normal'},
+    {title:'モモ',author:'エンデ',publisher:'岩波書店',isbn:'9784001105063',category:'物語・小説',status:'lent'},
+    {title:'銀河鉄道の夜',author:'宮沢賢治',publisher:'岩波書店',isbn:'9784001106023',category:'物語・小説',status:'normal'},
+    {title:'走れメロス',author:'太宰治',publisher:'岩波書店',isbn:'9784003108017',category:'物語・小説',status:'normal'},
+    {title:'星と宇宙の図鑑',author:'藤井旭',publisher:'学研',isbn:'9784052034557',category:'図鑑・事典',status:'normal'},
+    {title:'昆虫の図鑑',author:'日高敏隆',publisher:'学研',isbn:'9784052025624',category:'図鑑・事典',status:'normal'},
+    {title:'恐竜の図鑑',author:'小畠郁生',publisher:'学研',isbn:'9784052034564',category:'図鑑・事典',status:'normal'},
+    {title:'人体のふしぎ',author:'坂井建雄',publisher:'学研',isbn:'9784052025686',category:'科学・自然',status:'normal'},
+    {title:'日本の歴史1',author:'山本博文',publisher:'集英社',isbn:'9784082910017',category:'社会・歴史・地理',status:'normal'},
+    {title:'伝記 野口英世',author:'鈴木哲',publisher:'学研',isbn:'9784052040114',category:'伝記',status:'normal'},
+    {title:'伝記 ヘレン・ケラー',author:'山本史郎',publisher:'学研',isbn:'9784052040121',category:'伝記',status:'normal'},
+    {title:'算数図鑑',author:'安野光雅',publisher:'福音館書店',isbn:'9784834008456',category:'算数・数学',status:'normal'},
+    {title:'国語辞典',author:'金田一京助',publisher:'三省堂',isbn:'9784385139011',category:'言語・国語',status:'normal'},
+    {title:'防災ハンドブック',author:'河田惠昭',publisher:'学研',isbn:'9784052030252',category:'総合・その他',status:'normal'},
+  ];
+
+  const insertData = initBooks.map(b => ({
+    school_cd: 'demo', copies: 1, registered_at: '2026-01-01', ...b
+  }));
+  await db.from('books').insert(insertData);
+
+  alert('リセット完了しました！');
+  await loadStats('demo');
+  await loadBooks('demo');
+}
+
+function exitDemoMode() {
+  isDemoMode = false;
+  loginSchoolCd = null;
+  currentSchoolCd = null;
+
+  // バナーを削除
+  document.getElementById('demoBanner')?.remove();
+  document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '');
+
+  // ログアウト処理
+  db.auth.signOut();
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
 async function doLogin() {
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
