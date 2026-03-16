@@ -2133,7 +2133,8 @@ setTheme(savedTheme)
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('loginPassword')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') doLogin();\n  });
+    if (e.key === 'Enter') doLogin();
+  });
   updateThemeButtons(localStorage.getItem('appTheme') || 'dark')
 });
 
