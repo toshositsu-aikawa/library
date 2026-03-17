@@ -1648,6 +1648,14 @@ html, body {
           <div style="border-top:1px solid var(--border);padding-top:16px;">
           <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📚 本の独自バーコード一括印刷</div>
           <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">開始番号と枚数を指定して連番バーコードを印刷します。印刷後に本に貼り、スキャンして登録してください。</div>
+
+          <!-- プレフィックス表示 -->
+          <div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+            <div style="font-size:13px;color:var(--text3);">プレフィックス</div>
+            <div id="barcodePrefixLabel" style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--blue);">TAK</div>
+            <div style="font-size:13px;color:var(--text3);">（ログイン中の学校から自動設定）</div>
+          </div>
+
           <div class="form-row" style="margin-bottom:10px;">
             <div class="form-group">
               <label class="form-label">開始番号</label>
@@ -1658,7 +1666,7 @@ html, body {
               <input class="form-input" type="number" id="barcodePrintCount" value="20" min="1" max="200" oninput="updateBarcodePreview()" />
             </div>
           </div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">例：AIK-50301-00001 〜 AIK-50301-00020</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">TAK-00001 〜 TAK-00020（20枚）</div>
           <button onclick="printBookBarcodesSeq()" style="width:100%;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ バーコードを印刷</button>
         </div>
       </div>
@@ -2625,6 +2633,12 @@ function toggleAccordion(id) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
     if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
+    if (id === 'acc-barcode') {
+      const abbr = getSchoolAbbr(loginSchoolCd);
+      const label = document.getElementById('barcodePrefixLabel');
+      if (label) label.textContent = abbr;
+      updateBarcodePreview();
+    }
     if (id === 'acc-barcode') autoSetBarcodeStartNum();
   }
 }
@@ -2738,7 +2752,7 @@ async function printBookBarcodesSeq() {
   const startNum = parseInt(document.getElementById('barcodeStartNum').value) || 1;
   const count = Math.min(parseInt(document.getElementById('barcodePrintCount').value) || 20, 200);
   await loadJsBarcode();
-  const abbr = getSchoolAbbr(currentSchoolCd);
+  const abbr = getSchoolAbbr(loginSchoolCd);
   const ids = [];
   for (let i = 0; i < count; i++) {
     ids.push(abbr + '-' + String(startNum + i).padStart(5, '0'));
@@ -2747,7 +2761,7 @@ async function printBookBarcodesSeq() {
   // 登録済みチェック
   const { data: existing } = await db.from('books')
     .select('isbn')
-    .eq('school_cd', currentSchoolCd)
+    .eq('school_cd', loginSchoolCd)
     .in('isbn', ids);
   const registeredIds = (existing || []).map(b => b.isbn);
 
@@ -2764,11 +2778,12 @@ function updateBarcodePreview() {
   const startNum = parseInt(document.getElementById('barcodeStartNum')?.value) || 1;
   const count = Math.min(parseInt(document.getElementById('barcodePrintCount')?.value) || 20, 200);
   const endNum = startNum + count - 1;
+  const abbr = getSchoolAbbr(loginSchoolCd);
   const preview = document.getElementById('barcodePreview');
   if (preview) {
-    const start = getSchoolAbbr(currentSchoolCd) + '-' + String(startNum).padStart(5, '0');
-    const end   = getSchoolAbbr(currentSchoolCd) + '-' + String(endNum).padStart(5, '0');
-    preview.textContent = `例：${start} 〜 ${end}（${count}枚）`;
+    const start = abbr + '-' + String(startNum).padStart(5, '0');
+    const end   = abbr + '-' + String(endNum).padStart(5, '0');
+    preview.textContent = `${start} 〜 ${end}（${count}枚）`;
   }
 }
 
