@@ -1640,10 +1640,18 @@ html, body {
       </div>
       <div id="acc-barcode" style="display:none;padding:0 16px 16px;">
         <div style="margin-bottom:16px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">👤 利用者カード</div>
-          <div style="font-size:13px;color:var(--text3);margin-bottom:8px;">IDを改行で区切って複数入力できます</div>
-          <textarea id="userIdInput" rows="4" class="form-input" placeholder="S25001&#10;S25002&#10;S25003" style="font-family:'JetBrains Mono',monospace;font-size:14px;resize:vertical;"></textarea>
-          <button onclick="printUserCards()" style="width:100%;margin-top:8px;padding:12px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;">🖨️ 利用者カードを印刷</button>
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">👤 利用者カード連番印刷</div>
+          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">先頭のIDと枚数を指定して連番で印刷します。</div>
+          <div style="margin-bottom:10px;">
+            <label class="form-label">先頭のID</label>
+            <input class="form-input" type="text" id="userIdStart" placeholder="例：S25001" style="font-family:'JetBrains Mono',monospace;" oninput="updateUserCardPreview()" />
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="form-label">印刷枚数</label>
+            <input class="form-input" type="number" id="userIdCount" value="10" min="1" max="200" oninput="updateUserCardPreview()" />
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="userCardPreview">先頭のIDを入力してください</div>
+          <button onclick="printUserCardsSeq()" style="width:100%;padding:12px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;">🖨️ 利用者カードを印刷</button>
         </div>
           <div style="border-top:1px solid var(--border);padding-top:16px;">
           <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📚 本の独自バーコード一括印刷</div>
@@ -2713,6 +2721,44 @@ async function loadJsBarcode() {
     s.onload = res; s.onerror = rej;
     document.head.appendChild(s);
   });
+}
+
+// 利用者カード連番プレビュー更新
+function updateUserCardPreview() {
+  const startId = document.getElementById('userIdStart')?.value?.trim();
+  const count = Math.min(parseInt(document.getElementById('userIdCount')?.value) || 10, 200);
+  const preview = document.getElementById('userCardPreview');
+  if (!preview) return;
+  if (!startId) { preview.textContent = '先頭のIDを入力してください'; return; }
+  const ids = generateUserIdSequence(startId, count);
+  if (ids.length === 0) { preview.textContent = '有効なIDを入力してください'; return; }
+  const last = ids[ids.length - 1];
+  preview.textContent = `${startId} 〜 ${last}（${count}枚）`;
+}
+
+// IDの連番を生成（末尾の数字部分をインクリメント）
+function generateUserIdSequence(startId, count) {
+  const match = startId.match(/^([A-Za-z]*)(\d+)$/);
+  if (!match) return [];
+  const prefix = match[1];
+  const numStr = match[2];
+  const startNum = parseInt(numStr);
+  const padLen = numStr.length;
+  const ids = [];
+  for (let i = 0; i < count; i++) {
+    ids.push(prefix + String(startNum + i).padStart(padLen, '0'));
+  }
+  return ids;
+}
+
+async function printUserCardsSeq() {
+  const startId = document.getElementById('userIdStart')?.value?.trim();
+  const count = Math.min(parseInt(document.getElementById('userIdCount')?.value) || 10, 200);
+  if (!startId) { alert('先頭のIDを入力してください'); return; }
+  const ids = generateUserIdSequence(startId, count);
+  if (ids.length === 0) { alert('有効なIDを入力してください（例：S25001）'); return; }
+  await loadJsBarcode();
+  openPrintWindow(ids, '利用者カード', 'user');
 }
 
 async function printUserCards() {
