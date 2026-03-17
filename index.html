@@ -2801,7 +2801,9 @@ function openPrintWindow(ids, title, type) {
   const cardWidth = type === 'user' ? '85mm' : '70mm';
   const cardHeight = type === 'user' ? '54mm' : '35mm';
   const bgColor = type === 'user' ? '#e8f0fe' : '#fff';
-  const label = type === 'user' ? '愛川町図書館　利用者カード' : '愛川町図書館';
+  // ログイン中の学校名を取得
+  const schoolName = document.querySelector('.topbar-school')?.textContent?.trim() || '愛川町図書館';
+  const label = type === 'user' ? `${schoolName}　利用者カード` : schoolName;
 
   const cardsHtml = ids.map(id => `
     <div class="card">
