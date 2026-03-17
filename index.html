@@ -1562,15 +1562,26 @@ html, body {
 
     <!-- バックアップ -->
     <div class="section-header-row" style="margin-top:8px;margin-bottom:10px;">
-      <div class="section-title-text">バックアップ</div>
+      <div class="section-title-text">バックアップ・インポート</div>
     </div>
     <div class="card" style="margin-bottom:14px;">
       <div style="padding:14px 16px;">
         <div style="font-size:.85em;color:var(--text2);margin-bottom:14px;">現在の蔵書データをExcelに書き出します。半年〜1年に1回の定期的な保存を推奨します。</div>
         <div id="backupLastDate" style="font-size:.8em;color:var(--text3);margin-bottom:14px;">前回のバックアップ: —</div>
-        <button class="btn btn-success" style="width:100%;" onclick="exportBackupExcel()">
+        <button class="btn btn-success" style="width:100%;margin-bottom:10px;" onclick="exportBackupExcel()">
           💾 蔵書データをExcel出力
         </button>
+
+        <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
+          <div style="font-size:.85em;color:var(--text2);margin-bottom:10px;">ExcelファイルからCSVまたはXLSXで蔵書データを一括インポートします。<br>既存データと比較して変更があれば自動更新、同じなら自動スキップします。</div>
+          <label style="display:block;width:100%;">
+            <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(this)">
+            <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('importFileInput').click()">
+              📥 Excelからインポート
+            </button>
+          </label>
+          <div id="importResult" style="margin-top:10px;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -4389,6 +4400,193 @@ function selectShelf(shelfId, label) {
 }
 
 // ===== バックアップExcel出力 =====
+// ============================================================
+// Excelインポート
+// ============================================================
+async function handleImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = ''; // リセット
+
+  const resultEl = document.getElementById('importResult');
+  resultEl.innerHTML = '<div style="color:var(--text3);font-size:13px;">読み込み中…</div>';
+
+  // SheetJS読み込み
+  if (!window.XLSX) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // ヘッダー行を探す（「書名」または「title」を含む行）
+      let headerRowIdx = -1;
+      for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        if (rows[i].some(c => String(c).includes('書名') || String(c).toLowerCase() === 'title')) {
+          headerRowIdx = i;
+          break;
+        }
+      }
+      if (headerRowIdx === -1) {
+        resultEl.innerHTML = '<div style="color:var(--red);font-size:13px;">❌ ヘッダー行が見つかりません。エクスポートしたExcelをそのまま使用してください。</div>';
+        return;
+      }
+
+      const headers = rows[headerRowIdx].map(h => String(h).trim());
+      const dataRows = rows.slice(headerRowIdx + 1).filter(r => r.some(c => c !== ''));
+
+      // カラムマッピング
+      const colMap = {
+        registration_no:      ['登録番号'],
+        title:                ['書名', 'タイトル', 'title'],
+        author:               ['著者', 'author'],
+        publisher:            ['出版社', 'publisher'],
+        category:             ['カテゴリー', 'category'],
+        language:             ['言語', 'language'],
+        isbn:                 ['ISBN', 'isbn'],
+        delivery_date:        ['納品日'],
+        purchase_fiscal_year: ['購入年度'],
+        price:                ['価格（円）', '価格'],
+        copies:               ['冊数'],
+        is_donated:           ['寄贈'],
+        donated_by:           ['寄贈者'],
+        shelf_location:       ['場所'],
+      };
+
+      const getCol = (field) => {
+        const aliases = colMap[field] || [];
+        for (const alias of aliases) {
+          const idx = headers.findIndex(h => h.includes(alias));
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
+
+      const titleIdx   = getCol('title');
+      const isbnIdx    = getCol('isbn');
+      if (titleIdx === -1) {
+        resultEl.innerHTML = '<div style="color:var(--red);font-size:13px;">❌ 「書名」列が見つかりません。</div>';
+        return;
+      }
+
+      const mode = document.getElementById('importDuplicateMode').value;
+
+      // 既存データを取得（登録番号・ISBN・書名で検索用）
+      const { data: existingBooks } = await db.from('books')
+        .select('id, isbn, title, registration_no, author, publisher, category, language, delivery_date, purchase_fiscal_year, price, copies, is_donated, donated_by')
+        .eq('school_cd', currentSchoolCd);
+      const existingByRegNo = {};
+      const existingByIsbn  = {};
+      const existingByTitle = {};
+      (existingBooks || []).forEach(b => {
+        if (b.registration_no) existingByRegNo[b.registration_no.trim()] = b;
+        if (b.isbn) existingByIsbn[b.isbn.replace(/-/g,'')] = b;
+        existingByTitle[b.title] = b;
+      });
+
+      // データ比較用ヘルパー
+      function normalize(v) {
+        if (v === null || v === undefined || v === '') return '';
+        return String(v).trim();
+      }
+      function isDifferent(existing, newData) {
+        const fields = ['title','author','publisher','category','language','isbn',
+                        'registration_no','delivery_date','purchase_fiscal_year',
+                        'price','copies','is_donated','donated_by'];
+        return fields.some(f => normalize(existing[f]) !== normalize(newData[f]));
+      }
+
+      let added = 0, updated = 0, skipped = 0, errors = 0;
+
+      for (const row of dataRows) {
+        const title = String(row[titleIdx] || '').trim();
+        if (!title) continue;
+
+        const isbnRaw = isbnIdx !== -1 ? String(row[isbnIdx] || '').trim() : '';
+        const isbnClean = isbnRaw.replace(/-/g, '');
+        const regNo = String(row[getCol('registration_no')] || '').trim();
+
+        // 重複チェック：登録番号 → ISBN → 書名 の優先順位
+        const existing = (regNo && existingByRegNo[regNo])
+          || (isbnClean && existingByIsbn[isbnClean])
+          || existingByTitle[title];
+
+        const bookData = {
+          school_cd:            currentSchoolCd,
+          title,
+          author:               String(row[getCol('author')] || '').trim() || null,
+          publisher:            String(row[getCol('publisher')] || '').trim() || null,
+          category:             String(row[getCol('category')] || '').trim() || null,
+          language:             String(row[getCol('language')] || '').trim() || null,
+          isbn:                 isbnRaw || null,
+          registration_no:      String(row[getCol('registration_no')] || '').trim() || null,
+          copies:               parseInt(row[getCol('copies')]) || 1,
+          is_donated:           String(row[getCol('is_donated')] || '') === '寄贈',
+          donated_by:           String(row[getCol('donated_by')] || '').trim() || null,
+          registered_at:        new Date().toISOString().slice(0,10),
+        };
+
+        // 納品日
+        const deliveryRaw = row[getCol('delivery_date')];
+        if (deliveryRaw) {
+          const d = new Date(deliveryRaw);
+          if (!isNaN(d)) bookData.delivery_date = d.toISOString().slice(0,10);
+        }
+        // 購入年度
+        const fyRaw = String(row[getCol('purchase_fiscal_year')] || '').replace('年度','').trim();
+        if (fyRaw && !isNaN(parseInt(fyRaw))) bookData.purchase_fiscal_year = parseInt(fyRaw);
+        // 価格
+        const priceRaw = row[getCol('price')];
+        if (priceRaw && !isNaN(parseInt(priceRaw))) bookData.price = parseInt(priceRaw);
+
+        try {
+          if (existing) {
+            if (isDifferent(existing, bookData)) {
+              // 内容が違う → 上書き
+              const { error } = await db.from('books').update(bookData).eq('id', existing.id);
+              if (error) errors++;
+              else updated++;
+            } else {
+              // 内容が同じ → スキップ
+              skipped++;
+            }
+          } else {
+            // 新規追加
+            const { error } = await db.from('books').insert(bookData);
+            if (error) errors++;
+            else added++;
+          }
+        } catch(e) {
+          errors++;
+        }
+      }
+
+      resultEl.innerHTML = `
+        <div style="background:var(--bg3);border-radius:10px;padding:12px;font-size:13px;">
+          <div style="font-weight:700;margin-bottom:6px;">✅ インポート完了（${dataRows.length}行処理）</div>
+          <div style="color:var(--green);">新規追加：${added}件</div>
+          ${updated > 0 ? `<div style="color:var(--blue);">内容更新：${updated}件</div>` : ''}
+          ${skipped > 0 ? `<div style="color:var(--text3);">変更なしスキップ：${skipped}件</div>` : ''}
+          ${errors > 0 ? `<div style="color:var(--red);">エラー：${errors}件</div>` : ''}
+        </div>`;
+      await loadBooks(currentSchoolCd);
+      await loadStats(currentSchoolCd);
+    } catch(err) {
+      resultEl.innerHTML = `<div style="color:var(--red);font-size:13px;">❌ 読み込みエラー：${err.message}</div>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 async function exportBackupExcel() {
   const btn = document.querySelector('[onclick="exportBackupExcel()"]');
   if (btn) { btn.textContent = '⏳ 取得中…'; btn.disabled = true; }
