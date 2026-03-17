@@ -3607,7 +3607,6 @@ function showRegisterModal(isbn, bookInfo, shelfId = null) {
 // ホーム画面からの書籍登録（場所情報付き）
 async function registerHomeBook() {
   if (!pendingBookData) return;
-  const { isbn, title, author, publisher, price, shelfId } = pendingBookData;
 
   const modal = document.getElementById('unregModal');
   if (modal) modal.remove();
