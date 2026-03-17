@@ -1255,72 +1255,85 @@ html, body {
 
     <!-- セッション未開始 -->
     <div id="invSetup">
-      <!-- 進行中セッションがある場合（動的に表示） -->
-      <div id="invActiveSession" style="display:none;margin-bottom:16px;">
+
+      <!-- 令和◯年度 蔵書点検（本番） -->
+      <div id="invMainSession" style="margin-bottom:14px;">
         <div style="background:var(--green-dim);border:1px solid var(--green);border-radius:14px;padding:16px 18px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-            <div>
-              <div style="font-size:.8em;color:var(--green);font-weight:600;margin-bottom:4px;">📋 進行中の点検があります</div>
-              <div style="font-weight:700;font-size:1em;" id="activeSessionName">—</div>
-              <div style="font-size:.8em;color:var(--text2);margin-top:2px;" id="activeSessionMeta">—</div>
+          <div style="font-size:.8em;color:var(--green);font-weight:600;margin-bottom:6px;">📚 本番点検</div>
+          <div style="font-weight:700;font-size:1.1em;margin-bottom:4px;" id="mainSessionName">—</div>
+          <div style="font-size:.8em;color:var(--text2);margin-bottom:12px;" id="mainSessionMeta">—</div>
+          <!-- 進捗バー -->
+          <div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;font-size:.8em;color:var(--text2);margin-bottom:6px;">
+              <span>確認済み</span>
+              <span id="mainSessionPct">0%</span>
             </div>
-            <div style="text-align:right;">
-              <div style="font-size:1.6em;font-weight:700;color:var(--green);" id="activeSessionCount">0</div>
-              <div style="font-size:.75em;color:var(--text2);">冊スキャン済み</div>
+            <div style="background:var(--bg4);border-radius:99px;height:10px;overflow:hidden;">
+              <div id="mainSessionBar" style="background:var(--green);height:100%;width:0%;border-radius:99px;transition:width .4s;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:8px;">
+              <div style="text-align:center;">
+                <div style="font-size:1.4em;font-weight:700;color:var(--green);" id="mainSessionScanned">0</div>
+                <div style="font-size:.75em;color:var(--text2);">確認済み</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="font-size:1.4em;font-weight:700;color:var(--red);" id="mainSessionRemain">—</div>
+                <div style="font-size:.75em;color:var(--text2);">残り</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="font-size:1.4em;font-weight:700;color:var(--text2);" id="mainSessionTotal">—</div>
+                <div style="font-size:.75em;color:var(--text2);">総冊数</div>
+              </div>
             </div>
           </div>
-          <button onclick="joinActiveSession()" style="width:100%;padding:14px;background:var(--green);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1em;cursor:pointer;">
-            参加してスキャン開始
+          <button id="mainSessionBtn" onclick="joinOrStartMainSession()" style="width:100%;padding:14px;background:var(--green);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1em;cursor:pointer;">
+            読み込み中…
           </button>
         </div>
       </div>
 
-      <!-- 新規点検開始 -->
-      <div id="invNewSession">
-        <div class="section-header-row" style="margin-bottom:10px;">
-          <div class="section-title-text">新しい点検を開始</div>
+      <!-- テスト点検 -->
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:16px 18px;margin-bottom:14px;">
+        <div style="font-size:.8em;color:var(--text3);font-weight:600;margin-bottom:6px;">🎮 テスト点検</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:12px;">本番データに影響しない練習用モードです。何度でもリセットできます。</div>
+        <div style="margin-bottom:10px;">
+          <label class="form-label">担当者名</label>
+          <input class="form-input" id="invStaffName" type="text" placeholder="山田 花子" />
         </div>
-
-        <div class="form-row" style="margin-bottom:14px;">
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">担当者名</label>
-            <input class="form-input" id="invStaffName" type="text" placeholder="山田 花子" />
-          </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">点検の種類</label>
-            <select class="form-select" id="invSessionType">
-              <option>夏期点検</option>
-              <option>学期末点検</option>
-              <option>年度末点検</option>
-              <option>随時点検</option>
-            </select>
-          </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="startTestInventory()" style="flex:1;padding:12px;background:var(--blue);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;">
+            🎮 テスト開始
+          </button>
         </div>
-
-        <!-- スキャナーテスト -->
-        <div class="card" style="margin-bottom:14px;">
-          <div class="card-header">
-            <div>📡</div>
-            <h2>スキャナー動作確認</h2>
-          </div>
-          <div style="padding:16px 18px;">
-            <div class="form-group" style="margin-bottom:8px;">
-              <label class="form-label">テスト用に1冊スキャンしてください</label>
-              <div class="scan-input-row">
-                <input class="scan-isbn" id="testIsbn" type="text" inputmode="numeric" placeholder="978-4-XXXXXXXXXX" autocomplete="off" />
-                <button class="scan-go" onclick="testScan()">↵</button>
-              </div>
-            </div>
-            <div id="testFeedback"></div>
-          </div>
-        </div>
-
-        <button class="btn btn-success" style="width:100%;" onclick="startInventory()">🚀 点検を開始する</button>
       </div>
+
+      <!-- スキャナーテスト -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-header">
+          <div>📡</div>
+          <h2>スキャナー動作確認</h2>
+        </div>
+        <div style="padding:16px 18px;">
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label">テスト用に1冊スキャンしてください</label>
+            <div class="scan-input-row">
+              <input class="scan-isbn" id="testIsbn" type="text" inputmode="numeric" placeholder="978-4-XXXXXXXXXX" autocomplete="off" />
+              <button class="scan-go" onclick="testScan()">↵</button>
+            </div>
+          </div>
+          <div id="testFeedback"></div>
+        </div>
+      </div>
+
     </div>
 
     <!-- 点検中 -->
     <div id="invActive" style="display:none;">
+      <!-- テストモードバナー -->
+      <div id="invTestBanner" style="display:none;background:linear-gradient(90deg,#f59e0b,#d97706);color:#1a1000;padding:10px 16px;border-radius:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-weight:700;font-size:13px;">🎮 テストモード：本番データには影響しません</span>
+        <button onclick="resetTestInventory()" style="background:rgba(0,0,0,0.2);border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;">🔄 リセット</button>
+      </div>
 
       <!-- 棚選択（点検中に常時表示） -->
       <div id="invShelfSelector" style="display:none;margin-bottom:4px;">
@@ -3338,104 +3351,183 @@ let invStarted = false;
 let invScanned = 0, invIssues = 0, invTotalBooks = 0;
 let currentSessionId = null;
 let invRealtimeChannel = null;
+let invIsTestMode = false;
 
-// 点検タブに切り替えたときに進行中セッションをチェック
+// 現在の年度を取得（4月始まり）
+function getCurrentFiscalYear() {
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+// 令和年号に変換
+function toReiwa(year) {
+  return year - 2018;
+}
+
+// 点検タブに切り替えたときに本番セッションをロード
 async function checkActiveSession() {
+  const fy = getCurrentFiscalYear();
+  const sessionName = `令和${toReiwa(fy)}年度 蔵書点検`;
+
+  // 本番セッションを探す（is_test=false、当該年度）
   const { data } = await db.from('inventory_sessions')
     .select('*')
     .eq('school_cd', currentSchoolCd)
-    .is('finished_at', null)
+    .eq('fiscal_year', fy)
+    .eq('is_test', false)
     .order('started_at', { ascending: false })
     .limit(1);
 
-  const el = document.getElementById('invActiveSession');
+  // 総蔵書数を取得
+  const { count: totalCount } = await db.from('books')
+    .select('*', { count: 'exact', head: true })
+    .eq('school_cd', currentSchoolCd)
+    .neq('status', 'withdrawn');
+  invTotalBooks = totalCount || 0;
+
+  const nameEl  = document.getElementById('mainSessionName');
+  const metaEl  = document.getElementById('mainSessionMeta');
+  const btn     = document.getElementById('mainSessionBtn');
+
+  if (nameEl) nameEl.textContent = sessionName;
+
   if (data && data.length > 0) {
     const s = data[0];
-    document.getElementById('activeSessionName').textContent = s.session_name;
-    const date = new Date(s.started_at).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
-    document.getElementById('activeSessionMeta').textContent = `${date}開始`;
-    document.getElementById('activeSessionCount').textContent = (s.scanned_count || 0).toLocaleString();
-    el.style.display = 'block';
     currentSessionId = s.id;
-    invTotalBooks = s.total_books || 0;
     invScanned = s.scanned_count || 0;
+    const date = new Date(s.started_at).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
+    if (metaEl) metaEl.textContent = `${date}開始・進行中`;
+    if (btn) btn.textContent = '▶ 点検を続ける';
   } else {
-    el.style.display = 'none';
     currentSessionId = null;
+    invScanned = 0;
+    if (metaEl) metaEl.textContent = '未開始';
+    if (btn) btn.textContent = '🚀 点検を開始する';
+  }
+  updateMainSessionProgress();
+}
+
+function updateMainSessionProgress() {
+  const scanned = invIsTestMode ? 0 : invScanned;
+  const total   = invTotalBooks;
+  const remain  = Math.max(0, total - scanned);
+  const pct     = total > 0 ? Math.min(100, Math.round(scanned / total * 100)) : 0;
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('mainSessionScanned', scanned.toLocaleString());
+  set('mainSessionRemain',  remain.toLocaleString());
+  set('mainSessionTotal',   total.toLocaleString());
+  set('mainSessionPct',     pct + '%');
+  const bar = document.getElementById('mainSessionBar');
+  if (bar) bar.style.width = pct + '%';
+}
+
+async function joinOrStartMainSession() {
+  const staff = document.getElementById('invStaffName')?.value?.trim() || '—';
+  const fy = getCurrentFiscalYear();
+
+  if (currentSessionId) {
+    // 既存セッションに参加
+    invIsTestMode = false;
+    enterInvActive();
+  } else {
+    // 新規本番セッション作成
+    const sessionName = `令和${toReiwa(fy)}年度 蔵書点検`;
+    const { data, error } = await db.from('inventory_sessions').insert({
+      school_cd:     currentSchoolCd,
+      session_name:  sessionName,
+      staff_name:    staff,
+      total_books:   invTotalBooks,
+      scanned_count: 0,
+      is_test:       false,
+      fiscal_year:   fy,
+    }).select().single();
+    if (error) { alert('開始に失敗しました: ' + error.message); return; }
+    currentSessionId = data.id;
+    invScanned = 0;
+    invIsTestMode = false;
+    enterInvActive();
   }
 }
 
-async function joinActiveSession() {
-  if (!currentSessionId) return;
-  invStarted = true;
-  invIssues = 0;
-  document.getElementById('invSetup').style.display = 'none';
-  document.getElementById('invActive').style.display = 'block';
-  document.getElementById('invShelfSelector').style.display = 'block';
-  updateInvUI();
-  subscribeSession();
-  setTimeout(() => document.getElementById('invIsbn').focus(), 150);
-}
-
-async function startInventory() {
-  const staff = document.getElementById('invStaffName').value.trim();
-  const type = document.getElementById('invSessionType').value;
-  if (!staff) { alert('担当者名を入力してください'); return; }
-
-  const fy = getFiscalYear(new Date());
-  const sessionName = `令和${fy - 2018}年度 ${type}`;
-
-  const { data: statsData } = await db.from('school_stats')
-    .select('total_titles').eq('school_cd', currentSchoolCd).single();
-  const totalBooks = statsData ? (statsData.total_titles || 0) : 0;
+async function startTestInventory() {
+  const staff = document.getElementById('invStaffName')?.value?.trim() || 'テスト';
+  const fy = getCurrentFiscalYear();
+  const sessionName = `【テスト】令和${toReiwa(fy)}年度 蔵書点検`;
 
   const { data, error } = await db.from('inventory_sessions').insert({
-    school_cd: currentSchoolCd,
-    session_name: sessionName,
-    staff_name: staff,
-    total_books: totalBooks,
+    school_cd:     currentSchoolCd,
+    session_name:  sessionName,
+    staff_name:    staff,
+    total_books:   invTotalBooks,
     scanned_count: 0,
+    is_test:       true,
+    fiscal_year:   fy,
   }).select().single();
-
-  if (error) { alert('点検開始に失敗しました: ' + error.message); return; }
+  if (error) { alert('テスト開始に失敗しました: ' + error.message); return; }
 
   currentSessionId = data.id;
-  invTotalBooks = totalBooks;
   invScanned = 0;
-  invIssues = 0;
-  invStarted = true;
+  invIsTestMode = true;
+  enterInvActive();
+}
 
+async function resetTestInventory() {
+  if (!invIsTestMode || !currentSessionId) return;
+  if (!confirm('テストデータをリセットしますか？\nスキャン記録がすべて削除されます。')) return;
+
+  await db.from('inventory_scanned').delete().eq('session_id', currentSessionId);
+  await db.from('inventory_sessions').delete().eq('id', currentSessionId).eq('is_test', true);
+
+  currentSessionId = null;
+  invScanned = 0;
+  invStarted = false;
+  invIsTestMode = false;
+
+  document.getElementById('invActive').style.display = 'none';
+  document.getElementById('invSetup').style.display = 'block';
+  await checkActiveSession();
+}
+
+function enterInvActive() {
+  invStarted = true;
+  invIssues = 0;
   document.getElementById('invSetup').style.display = 'none';
   document.getElementById('invActive').style.display = 'block';
   document.getElementById('invShelfSelector').style.display = 'block';
+
+  // テストバナー
+  const banner = document.getElementById('invTestBanner');
+  if (banner) banner.style.display = invIsTestMode ? 'flex' : 'none';
+
   updateInvUI();
   subscribeSession();
-  setTimeout(() => document.getElementById('invIsbn').focus(), 150);
+  setTimeout(() => document.getElementById('invIsbn')?.focus(), 150);
 }
 
-// リアルタイム購読（他のiPadのスキャンを反映）
-function subscribeSession() {
-  if (invRealtimeChannel) invRealtimeChannel.unsubscribe();
-  if (!currentSessionId) return;
-  invRealtimeChannel = db.channel('session-' + currentSessionId)
-    .on('postgres_changes', {
-      event: 'UPDATE',
-      schema: 'public',
-      table: 'inventory_sessions',
-      filter: `id=eq.${currentSessionId}`
-    }, payload => {
-      invScanned = payload.new.scanned_count || 0;
-      updateInvUI();
-    })
-    .subscribe();
-}
-
+// 既存互換用
+async function joinActiveSession() { await joinOrStartMainSession(); }
+async function startInventory()    { await joinOrStartMainSession(); }
 function resumeSession() {
   invStarted = true;
   document.getElementById('invSetup').style.display = 'none';
   document.getElementById('invActive').style.display = 'block';
   subscribeSession();
-  setTimeout(() => document.getElementById('invIsbn').focus(), 150);
+  setTimeout(() => document.getElementById('invIsbn')?.focus(), 150);
+}
+
+// リアルタイム購読
+function subscribeSession() {
+  if (invRealtimeChannel) invRealtimeChannel.unsubscribe();
+  if (!currentSessionId) return;
+  invRealtimeChannel = db.channel('session-' + currentSessionId)
+    .on('postgres_changes', {
+      event: 'UPDATE', schema: 'public', table: 'inventory_sessions',
+      filter: `id=eq.${currentSessionId}`
+    }, payload => {
+      invScanned = payload.new.scanned_count || 0;
+      updateInvUI();
+    }).subscribe();
 }
 
 function updateInvUI() {
@@ -3670,17 +3762,25 @@ async function handleInvScan() {
   if (book) {
     // 登録済み → 確認済み
     invScanned++;
-    // DBのscanned_countを更新（他のiPadにリアルタイム反映）
     if (currentSessionId) {
+      // スキャン済み記録（重複は無視）
+      await db.from('inventory_scanned').upsert({
+        session_id: currentSessionId,
+        book_id: book.id,
+        school_cd: currentSchoolCd,
+      }, { onConflict: 'session_id,book_id' });
+      // セッションのカウントを更新
       await db.from('inventory_sessions')
         .update({ scanned_count: invScanned })
         .eq('id', currentSessionId);
     }
-    // 棚IDを本に紐付け
-    if (currentShelfId) {
+    // 棚IDを本に紐付け（テストモードでは本番データに影響させない）
+    if (currentShelfId && !invIsTestMode) {
       await db.from('books').update({ shelf_id: currentShelfId }).eq('id', book.id);
     }
     updateInvUI();
+    // 本番モードなら進捗バーも更新
+    if (!invIsTestMode) updateMainSessionProgress();
 
     // 購入年度が未登録かどうかでフィードバックを変える
     const hasPurchaseYear = !!book.purchase_fiscal_year;
@@ -4398,14 +4498,18 @@ async function loadWithdrawList() {
 // Excel出力（SheetJS）
 // ============================================================
 async function finishInventory() {
-  // DBのセッションを終了
   if (currentSessionId) {
-    await db.from('inventory_sessions')
-      .update({ finished_at: new Date().toISOString() })
-      .eq('id', currentSessionId);
+    if (invIsTestMode) {
+      // テストモード：セッションを削除
+      await db.from('inventory_scanned').delete().eq('session_id', currentSessionId);
+      await db.from('inventory_sessions').delete().eq('id', currentSessionId);
+    } else {
+      // 本番モード：終了日時を記録せず「継続中」のまま（随時点検は終わらせない）
+      // 明示的に「完了」にする場合のみfinished_atをセット
+    }
   }
-  // 状態リセット
   invStarted = false;
+  invIsTestMode = false;
   currentSessionId = null;
   invScanned = 0;
   invIssues = 0;
