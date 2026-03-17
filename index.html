@@ -1645,11 +1645,21 @@ html, body {
           <textarea id="userIdInput" rows="4" class="form-input" placeholder="S25001&#10;S25002&#10;S25003" style="font-family:'JetBrains Mono',monospace;font-size:14px;resize:vertical;"></textarea>
           <button onclick="printUserCards()" style="width:100%;margin-top:8px;padding:12px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;">🖨️ 利用者カードを印刷</button>
         </div>
-        <div style="border-top:1px solid var(--border);padding-top:16px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📚 本の独自バーコード</div>
-          <div style="font-size:13px;color:var(--text3);margin-bottom:8px;">IDを改行で区切って複数入力できます</div>
-          <textarea id="bookIdInput" rows="4" class="form-input" placeholder="AIK-50301-00001&#10;AIK-50301-00002" style="font-family:'JetBrains Mono',monospace;font-size:14px;resize:vertical;"></textarea>
-          <button onclick="printBookBarcodes()" style="width:100%;margin-top:8px;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ 本のバーコードを印刷</button>
+          <div style="border-top:1px solid var(--border);padding-top:16px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📚 本の独自バーコード一括印刷</div>
+          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">開始番号と枚数を指定して連番バーコードを印刷します。印刷後に本に貼り、スキャンして登録してください。</div>
+          <div class="form-row" style="margin-bottom:10px;">
+            <div class="form-group">
+              <label class="form-label">開始番号</label>
+              <input class="form-input" type="number" id="barcodeStartNum" value="1" min="1" style="font-family:'JetBrains Mono',monospace;" oninput="updateBarcodePreview()" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">印刷枚数</label>
+              <input class="form-input" type="number" id="barcodePrintCount" value="20" min="1" max="200" oninput="updateBarcodePreview()" />
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">例：AIK-50301-00001 〜 AIK-50301-00020</div>
+          <button onclick="printBookBarcodesSeq()" style="width:100%;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ バーコードを印刷</button>
         </div>
       </div>
     </div>
@@ -2221,6 +2231,27 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 let currentSchoolCd = '50301'
 let loginSchoolCd = '50301' // ログイン時の学校コード（変更不可）
 
+// 学校コード→バーコード略称マップ
+const SCHOOL_ABBR = {
+  '50301': 'TAK',
+  '50302': 'HAN',
+  '50303': 'NK2',
+  '50304': 'SUG',
+  '50305': 'NAK',
+  '50306': 'TAS',
+  '50401': 'AIK',
+  '50402': 'HIG',
+  '50403': 'NKH',
+  'demo':  'DMO',
+};
+function getSchoolAbbr(cd) {
+  return SCHOOL_ABBR[cd] || cd;
+}
+// 独自バーコード判定（略称-連番 形式）
+function isLocalBarcode(val) {
+  return /^[A-Z]{2,4}-\d{5}$/.test(val);
+}
+
 // ===== テーマ切り替え =====
 function setTheme(theme) {
   document.body.classList.remove('theme-light', 'theme-blue')
@@ -2594,6 +2625,7 @@ function toggleAccordion(id) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
     if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
+    if (id === 'acc-barcode') autoSetBarcodeStartNum();
   }
 }
 
@@ -2679,8 +2711,69 @@ async function printUserCards() {
   openPrintWindow(ids, '利用者カード', 'user');
 }
 
+// バーコード開始番号を自動設定（既存の最大番号+1）
+async function autoSetBarcodeStartNum() {
+  const { data } = await db.from('books')
+    .select('isbn')
+    .eq('school_cd', currentSchoolCd)
+    .like('isbn', 'AIK-%')
+    .order('isbn', { ascending: false })
+    .limit(1);
+
+  let nextNum = 1;
+  if (data && data.length > 0) {
+    const parts = data[0].isbn.split('-');
+    const lastNum = parseInt(parts[parts.length - 1]) || 0;
+    nextNum = lastNum + 1;
+  }
+
+  const startInput = document.getElementById('barcodeStartNum');
+  if (startInput) {
+    startInput.value = nextNum;
+    updateBarcodePreview();
+  }
+}
+
+async function printBookBarcodesSeq() {
+  const startNum = parseInt(document.getElementById('barcodeStartNum').value) || 1;
+  const count = Math.min(parseInt(document.getElementById('barcodePrintCount').value) || 20, 200);
+  await loadJsBarcode();
+  const abbr = getSchoolAbbr(currentSchoolCd);
+  const ids = [];
+  for (let i = 0; i < count; i++) {
+    ids.push(abbr + '-' + String(startNum + i).padStart(5, '0'));
+  }
+
+  // 登録済みチェック
+  const { data: existing } = await db.from('books')
+    .select('isbn')
+    .eq('school_cd', currentSchoolCd)
+    .in('isbn', ids);
+  const registeredIds = (existing || []).map(b => b.isbn);
+
+  if (registeredIds.length > 0) {
+    const msg = `${registeredIds.length}件のバーコードは既に登録済みです。\n（${registeredIds.slice(0,3).join(', ')}${registeredIds.length > 3 ? ' ほか' : ''}）\n\nそれでも印刷しますか？`;
+    if (!confirm(msg)) return;
+  }
+
+  openPrintWindow(ids, '本のバーコード', 'book');
+}
+
+// プレビュー更新
+function updateBarcodePreview() {
+  const startNum = parseInt(document.getElementById('barcodeStartNum')?.value) || 1;
+  const count = Math.min(parseInt(document.getElementById('barcodePrintCount')?.value) || 20, 200);
+  const endNum = startNum + count - 1;
+  const preview = document.getElementById('barcodePreview');
+  if (preview) {
+    const start = getSchoolAbbr(currentSchoolCd) + '-' + String(startNum).padStart(5, '0');
+    const end   = getSchoolAbbr(currentSchoolCd) + '-' + String(endNum).padStart(5, '0');
+    preview.textContent = `例：${start} 〜 ${end}（${count}枚）`;
+  }
+}
+
 async function printBookBarcodes() {
-  const input = document.getElementById('bookIdInput').value.trim();
+  const input = document.getElementById('bookIdInput')?.value?.trim();
   if (!input) { alert('本のIDを入力してください'); return; }
   const ids = input.split('\n').map(s => s.trim()).filter(Boolean);
   if (ids.length === 0) { alert('有効なIDがありません'); return; }
@@ -3170,17 +3263,34 @@ async function handleHomeScan() {
       input.focus();
       return;
     }
-    // 書誌情報取得して登録モーダル表示
-    fb.innerHTML = `<div class="feedback" style="opacity:.6"><div class="fb-icon">🔍</div><div><div class="fb-title">書誌情報を検索中…</div><div class="fb-isbn">${val}</div></div></div>`;
-    const info = await fetchBookInfo(val);
     const regShelfId = document.getElementById('regShelfId')?.value || null;
-    showRegisterModal(val, info, regShelfId);
+    // 独自バーコード（AIK-）の場合は書誌情報検索をスキップ
+    if (isLocalBarcode(val)) {
+      fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">🏷️</div><div><div class="fb-title">独自バーコード</div><div class="fb-isbn">${val}</div></div></div>`;
+      showRegisterModal(val, null, regShelfId);
+    } else {
+      // ISBN→書誌情報取得
+      fb.innerHTML = `<div class="feedback" style="opacity:.6"><div class="fb-icon">🔍</div><div><div class="fb-title">書誌情報を検索中…</div><div class="fb-isbn">${val}</div></div></div>`;
+      const info = await fetchBookInfo(val);
+      showRegisterModal(val, info, regShelfId);
+    }
 
   } else if (scanMode === 'lend') {
     // 貸出モード
     const book = await findBookByISBN(val, currentSchoolCd);
     if (!book) {
-      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❓</div><div><div class="fb-title">この本は登録されていません</div><div class="fb-isbn">${val}</div></div></div>`;
+      // 独自バーコードで未登録の場合は登録へ誘導
+      if (isLocalBarcode(val)) {
+        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">🏷️</div><div><div class="fb-title">未登録のバーコードです</div><div class="fb-body">登録モードに切り替えて登録してください</div><div class="fb-isbn">${val}</div></div></div>`;
+        // 登録モードに切り替えてそのまま登録フォームを開く
+        setScanMode('reg');
+        document.querySelectorAll('.scan-mode-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('[onclick="setScanMode(\'reg\')"]')?.classList.add('active');
+        const regShelfId = document.getElementById('regShelfId')?.value || null;
+        showRegisterModal(val, null, regShelfId);
+      } else {
+        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❓</div><div><div class="fb-title">この本は登録されていません</div><div class="fb-isbn">${val}</div></div></div>`;
+      }
       input.focus();
       return;
     }
@@ -3396,51 +3506,102 @@ let pendingBookData = null;
 
 // 未登録本を登録するモーダルを表示
 function showRegisterModal(isbn, bookInfo, shelfId = null) {
-  const title = bookInfo ? bookInfo.title : '（書誌情報なし）';
+  const isAikBarcode = isLocalBarcode(isbn);
+  const title = bookInfo ? bookInfo.title : '';
   const author = bookInfo ? (bookInfo.author || '') : '';
   const publisher = bookInfo ? (bookInfo.publisher || '') : '';
   const price = bookInfo ? (bookInfo.price || null) : null;
 
-  // データを一時保存（クォート問題を回避）
   pendingBookData = { isbn, title, author, publisher, price, shelfId };
 
-  // 既存モーダルがあれば削除
   const existing = document.getElementById('unregModal');
   if (existing) existing.remove();
 
   const modal = document.createElement('div');
   modal.id = 'unregModal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.7);padding:16px;';
-  modal.innerHTML = `
-    <div style="background:var(--bg2);border-radius:20px 20px 16px 16px;width:100%;max-width:480px;padding:24px;box-shadow:0 -4px 40px rgba(0,0,0,0.5);">
-      <div style="font-size:1.1em;font-weight:700;margin-bottom:16px;">📚 未登録の本が見つかりました</div>
-      <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;">
-        <div style="font-size:1.05em;font-weight:700;margin-bottom:4px;">${title.replace(/</g,'&lt;')}</div>
-        <div style="color:var(--text2);font-size:.85em;">${author.replace(/</g,'&lt;')}</div>
-        <div style="color:var(--text2);font-size:.85em;">${publisher.replace(/</g,'&lt;')}</div>
-        <div style="color:var(--text3);font-size:.8em;margin-top:6px;font-family:monospace;">ISBN: ${isbn}</div>
-      </div>
-      <div style="color:var(--text2);font-size:.85em;margin-bottom:20px;">
-        この本は蔵書データベースに登録されていません。今すぐ追加しますか？
-      </div>
-      <div style="display:flex;gap:10px;">
-        <button id="unregRegisterBtn"
-          style="flex:1;padding:16px;background:var(--green);color:#000;border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
-          ✅ 登録する
-        </button>
+
+  if (isAikBarcode) {
+    // 独自バーコード：書名・登録番号の入力フォームを表示
+    modal.innerHTML = `
+      <div style="background:var(--bg2);border-radius:20px 20px 16px 16px;width:100%;max-width:480px;padding:24px;box-shadow:0 -4px 40px rgba(0,0,0,0.5);max-height:80vh;overflow-y:auto;">
+        <div style="font-size:1.1em;font-weight:700;margin-bottom:4px;">🏷️ 独自バーコード登録</div>
+        <div style="font-size:.8em;color:var(--text3);font-family:monospace;margin-bottom:16px;">${isbn}</div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">書名 <span style="color:var(--red);">*</span></label>
+          <input id="unregTitle" class="form-input" type="text" placeholder="書名を入力してください" style="font-size:1em;" />
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">台帳の登録番号（任意）</label>
+          <input id="unregRegNo" class="form-input" type="text" placeholder="例：R-2024-001" style="font-family:'JetBrains Mono',monospace;" />
+          <div style="font-size:.75em;color:var(--text3);margin-top:4px;">台帳にある番号を入力するとバーコードと紐付けされます</div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">著者</label>
+          <input id="unregAuthor" class="form-input" type="text" placeholder="著者名" />
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">出版社</label>
+          <input id="unregPublisher" class="form-input" type="text" placeholder="出版社" />
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="unregRegisterBtn"
+            style="flex:1;padding:16px;background:var(--green);color:#000;border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
+            ✅ 登録する
+          </button>
+          <button id="unregSkipBtn"
+            style="flex:1;padding:16px;background:var(--bg4);color:var(--text);border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
+            キャンセル
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('unregRegisterBtn').addEventListener('click', async () => {
+      const titleVal = document.getElementById('unregTitle').value.trim();
+      if (!titleVal) { alert('書名を入力してください'); return; }
+      pendingBookData.title = titleVal;
+      pendingBookData.author = document.getElementById('unregAuthor').value.trim();
+      pendingBookData.publisher = document.getElementById('unregPublisher').value.trim();
+      pendingBookData.registration_no = document.getElementById('unregRegNo').value.trim() || null;
+      await registerHomeBook();
+    });
+    document.getElementById('unregSkipBtn').addEventListener('click', () => {
+      modal.remove();
+      document.getElementById('homeIsbn')?.focus();
+    });
+    setTimeout(() => document.getElementById('unregTitle')?.focus(), 300);
+  } else {
+    // ISBN本：従来の確認ダイアログ
+    modal.innerHTML = `
+      <div style="background:var(--bg2);border-radius:20px 20px 16px 16px;width:100%;max-width:480px;padding:24px;box-shadow:0 -4px 40px rgba(0,0,0,0.5);">
+        <div style="font-size:1.1em;font-weight:700;margin-bottom:16px;">📚 未登録の本が見つかりました</div>
+        <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:1.05em;font-weight:700;margin-bottom:4px;">${title || '（書誌情報なし）'}</div>
+          <div style="color:var(--text2);font-size:.85em;">${author}</div>
+          <div style="color:var(--text2);font-size:.85em;">${publisher}</div>
+          <div style="color:var(--text3);font-size:.8em;margin-top:6px;font-family:monospace;">ISBN: ${isbn}</div>
+        </div>
+        <div style="color:var(--text2);font-size:.85em;margin-bottom:20px;">
+          この本は蔵書データベースに登録されていません。今すぐ追加しますか？
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="unregRegisterBtn"
+            style="flex:1;padding:16px;background:var(--green);color:#000;border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
+            ✅ 登録する
+          </button>
         <button id="unregSkipBtn"
           style="flex:1;padding:16px;background:var(--bg4);color:var(--text);border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
           スキップ
         </button>
       </div>
     </div>`;
-  document.body.appendChild(modal);
-
-  document.getElementById('unregRegisterBtn').addEventListener('click', registerHomeBook);
-  document.getElementById('unregSkipBtn').addEventListener('click', () => {
-    document.getElementById('unregModal').remove();
-    document.getElementById('homeIsbn')?.focus();
-  });
+    document.body.appendChild(modal);
+    document.getElementById('unregRegisterBtn').addEventListener('click', registerHomeBook);
+    document.getElementById('unregSkipBtn').addEventListener('click', () => {
+      document.getElementById('unregModal').remove();
+      document.getElementById('homeIsbn')?.focus();
+    });
+  }
 }
 
 // ホーム画面からの書籍登録（場所情報付き）
@@ -3451,6 +3612,8 @@ async function registerHomeBook() {
   const modal = document.getElementById('unregModal');
   if (modal) modal.remove();
   const fb = document.getElementById('homeFeedback');
+
+  const { isbn, title, author, publisher, price, shelfId, registration_no } = pendingBookData;
 
   const insertData = {
     school_cd: currentSchoolCd,
@@ -3463,6 +3626,7 @@ async function registerHomeBook() {
     registered_at: new Date().toISOString().slice(0,10),
   };
   if (shelfId) insertData.shelf_id = Number(shelfId);
+  if (registration_no) insertData.registration_no = registration_no;
 
   const { error } = await db.from('books').insert(insertData);
   pendingBookData = null;
@@ -3470,7 +3634,7 @@ async function registerHomeBook() {
   if (error) {
     if (fb) fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❌</div><div><div class="fb-title">登録失敗</div><div class="fb-body">${error.message}</div></div></div>`;
   } else {
-    if (fb) fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">登録完了</div><div class="fb-body">${title} を蔵書に追加しました</div></div></div>`;
+    if (fb) fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">登録完了</div><div class="fb-body">${title} を蔵書に追加しました${registration_no ? '（登録番号：'+registration_no+'）' : ''}</div></div></div>`;
     await loadStats(currentSchoolCd);
     await loadBooks(currentSchoolCd);
   }
@@ -3690,7 +3854,7 @@ async function generateLocalId() {
     nextNum = lastNum + 1;
   }
 
-  const newId = 'AIK-' + currentSchoolCd + '-' + String(nextNum).padStart(5, '0');
+  const newId = getSchoolAbbr(currentSchoolCd) + '-' + String(nextNum).padStart(5, '0');
   document.getElementById('addIsbn').value = newId;
   document.getElementById('generatedIdLabel').textContent = '発行済み：' + newId;
 }
