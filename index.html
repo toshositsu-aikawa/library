@@ -1607,6 +1607,15 @@ html, body {
       </div>
     </div>
 
+    <!-- 言語管理 -->
+    <div class="section-header-row" style="margin-bottom:10px;">
+      <div class="section-title-text">🌐 外国語の言語管理</div>
+      <button class="btn btn-ghost" style="padding:6px 14px;font-size:.85em;" onclick="openAddLanguageModal()">＋ 言語を追加</button>
+    </div>
+    <div class="card" style="margin-bottom:14px;" id="languageList">
+      <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
+    </div>
+
     <!-- バーコード印刷 -->
     <div class="section-header-row" style="margin-bottom:10px;">
       <div class="section-title-text">🏷️ バーコード印刷</div>
@@ -1895,7 +1904,7 @@ html, body {
       </div>
       <div class="form-group">
         <label class="form-label">カテゴリー</label>
-        <select class="form-select" id="editCategory">
+        <select class="form-select" id="editCategory" onchange="onCategoryChange(this.value)">
           <option value="">未設定</option>
           <option value="絵本">絵本</option>
           <option value="物語・小説">物語・小説</option>
@@ -1910,6 +1919,13 @@ html, body {
           <option value="伝記">伝記</option>
           <option value="外国語">外国語</option>
           <option value="総合・その他">総合・その他</option>
+        </select>
+      </div>
+      <!-- 外国語選択時に表示 -->
+      <div class="form-group" id="editLanguageGroup" style="display:none;">
+        <label class="form-label">言語</label>
+        <select class="form-select" id="editLanguage">
+          <option value="">言語を選択</option>
         </select>
       </div>
       <div class="form-row">
@@ -2549,6 +2565,66 @@ async function renderBooksPage(schoolCd) {
 
 // ============================================================
 // ============================================================
+// 言語管理
+// ============================================================
+let cachedLanguages = null;
+
+async function loadLanguages() {
+  const { data } = await db.from('languages').select('*').order('name');
+  cachedLanguages = data || [];
+  return cachedLanguages;
+}
+
+async function loadLanguageList() {
+  const langs = await loadLanguages();
+  const el = document.getElementById('languageList');
+  if (!el) return;
+  if (langs.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">言語が登録されていません</div>';
+    return;
+  }
+  el.innerHTML = langs.map(l => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);">
+      <div style="font-size:14px;">🌐 ${l.name}</div>
+      <button onclick="deleteLanguage(${l.id},'${l.name}')" style="font-size:.75em;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text3);cursor:pointer;">削除</button>
+    </div>
+  `).join('');
+}
+
+async function openAddLanguageModal() {
+  const name = prompt('言語名を入力してください\n例：タガログ語、ネパール語、ウルドゥー語');
+  if (!name || !name.trim()) return;
+  const { error } = await db.from('languages').insert({ name: name.trim() });
+  if (error) { alert('追加に失敗しました: ' + error.message); return; }
+  cachedLanguages = null;
+  await loadLanguageList();
+}
+
+async function deleteLanguage(id, name) {
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+  const { error } = await db.from('languages').delete().eq('id', id);
+  if (error) { alert('削除に失敗しました: ' + error.message); return; }
+  cachedLanguages = null;
+  await loadLanguageList();
+}
+
+async function onCategoryChange(category, currentLanguage = '') {
+  const group = document.getElementById('editLanguageGroup');
+  const sel = document.getElementById('editLanguage');
+  if (!group || !sel) return;
+  if (category === '外国語') {
+    group.style.display = 'block';
+    // 言語リストを読み込む
+    const langs = cachedLanguages || await loadLanguages();
+    sel.innerHTML = '<option value="">言語を選択</option>' +
+      langs.map(l => `<option value="${l.name}" ${l.name === currentLanguage ? 'selected' : ''}>${l.name}</option>`).join('');
+  } else {
+    group.style.display = 'none';
+  }
+}
+
+// 設定タブ切り替え時に言語リストを読み込む
+// ============================================================
 // バーコード印刷
 // ============================================================
 async function loadJsBarcode() {
@@ -2928,6 +3004,7 @@ function switchTab(tab) {
 
   if (tab === 'settings') {
     loadRoomShelfList();
+    loadLanguageList();
   }
 
   if (tab === 'stats') {
@@ -3691,6 +3768,11 @@ async function openBookDetail(bookId) {
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">場所</div>
         <div style="font-size:14px;font-weight:500;">${locationText}</div>
       </div>
+      ${data.category === '外国語' && data.language ? `
+      <div class="overdue-row" style="padding:12px 0;">
+        <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">言語</div>
+        <div style="font-size:14px;font-weight:500;">🌐 ${data.language}</div>
+      </div>` : ''}
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">登録番号</div>
         <div style="font-size:14px;font-weight:500;">${data.registration_no || '—'}</div>
@@ -3859,6 +3941,8 @@ function openEditBookModal() {
   document.getElementById('editDeliveryDate').value = d.delivery_date ? d.delivery_date.slice(0,10) : '';
   document.getElementById('editFiscalYear').value = d.purchase_fiscal_year || '';
   loadShelvesIntoSelect('editShelfId', d.shelf_id);
+  // 言語フィールド
+  onCategoryChange(d.category || '', d.language || '');
   closeModal('bookDetailModal');
   openModal('editBookModal');
 }
@@ -3866,11 +3950,14 @@ function openEditBookModal() {
 async function saveBookEdit() {
   if (!currentBookId) return;
   const shelfVal = document.getElementById('editShelfId').value;
+  const category = document.getElementById('editCategory').value || null;
+  const language = category === '外国語' ? (document.getElementById('editLanguage').value || null) : null;
   const updates = {
     title:                document.getElementById('editTitle').value.trim(),
     author:               document.getElementById('editAuthor').value.trim(),
     publisher:            document.getElementById('editPublisher').value.trim(),
-    category:             document.getElementById('editCategory').value || null,
+    category:             category,
+    language:             language,
     registration_no:      document.getElementById('editRegNo').value.trim() || null,
     price:                document.getElementById('editPrice').value ? Number(document.getElementById('editPrice').value) : null,
     delivery_date:        document.getElementById('editDeliveryDate').value || null,
@@ -4312,7 +4399,7 @@ async function exportBackupExcel() {
   const PAGE = 1000;
   while (true) {
     const { data, error } = await db.from('books')
-      .select('registration_no, title, author, publisher, isbn, category, delivery_date, purchase_fiscal_year, price, copies, is_donated, donated_by, status, registered_at, shelf_id, shelves(name, rooms(name))')
+      .select('registration_no, title, author, publisher, isbn, category, language, delivery_date, purchase_fiscal_year, price, copies, is_donated, donated_by, status, registered_at, shelf_id, shelves(name, rooms(name))')
       .eq('school_cd', currentSchoolCd)
       .order('registration_no', { nullsFirst: false })
       .range(from, from + PAGE - 1);
@@ -4345,7 +4432,7 @@ async function exportBackupExcel() {
   const rows = [
     [`${schoolName} 蔵書データ（バックアップ）　出力日: ${today}`],
     [],
-    ['登録番号', '書名', '著者', '出版社', 'カテゴリー', 'ISBN', '納品日', '購入年度', '価格（円）', '冊数', '寄贈', '寄贈者', '状態', '場所', '登録日'],
+    ['登録番号', '書名', '著者', '出版社', 'カテゴリー', '言語', 'ISBN', '納品日', '購入年度', '価格（円）', '冊数', '寄贈', '寄贈者', '状態', '場所', '登録日'],
     ...allBooks.map(b => {
       const roomName = b.shelves?.rooms?.name || '';
       const shelfName = b.shelves?.name || '';
@@ -4356,6 +4443,7 @@ async function exportBackupExcel() {
         b.author || '',
         b.publisher || '',
         b.category || '',
+        b.language || '',
         b.isbn || '',
         b.delivery_date ? b.delivery_date.slice(0,10) : '',
         b.purchase_fiscal_year ? b.purchase_fiscal_year + '年度' : '',
