@@ -1390,86 +1390,17 @@ html, body {
       <div class="section-header-row">
         <div class="section-title-text">棚の進捗</div>
       </div>
-      <div class="card" style="margin-bottom:14px;">
-        <div class="shelf-row done">
-          <div class="shelf-dot"></div>
-          <div class="shelf-name">A棚 物語・小説</div>
-          <div class="shelf-cnt">312 / 312</div>
-        </div>
-        <div class="shelf-row done">
-          <div class="shelf-dot"></div>
-          <div class="shelf-name">B棚 図鑑・科学</div>
-          <div class="shelf-cnt">248 / 248</div>
-        </div>
-        <div class="shelf-row active">
-          <div class="shelf-dot"></div>
-          <div class="shelf-name">C棚 絵本</div>
-          <div class="shelf-cnt">821 / 1,282</div>
-        </div>
-        <div class="shelf-row todo">
-          <div class="shelf-dot"></div>
-          <div class="shelf-name">D棚 その他</div>
-          <div class="shelf-cnt">0 / 312</div>
-        </div>
+      <div class="card" style="margin-bottom:14px;" id="invShelfProgress">
+        <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">点検を開始すると進捗が表示されます</div>
       </div>
 
       <!-- 問題リスト -->
       <div class="section-header-row">
         <div class="section-title-text">⚠️ 問題リスト</div>
-        <div class="see-all" id="invIssueCount" style="color:var(--red);">7件</div>
+        <div class="see-all" id="invIssueCount" style="color:var(--red);"></div>
       </div>
-
-      <div class="card miss" style="margin-bottom:10px;">
-        <div class="issue-section-hd">
-          <div class="issue-section-name">所在不明本</div>
-          <div class="issue-cnt">4冊</div>
-        </div>
-        <div class="issue-item">
-          <div class="issue-icon">📕</div>
-          <div class="issue-info">
-            <div class="issue-title">昆虫の世界 大図鑑</div>
-            <div class="issue-meta">学研 ／ 978-4-09-217853-3</div>
-          </div>
-          <div class="issue-tag">所在不明</div>
-        </div>
-        <div class="issue-item">
-          <div class="issue-icon">📗</div>
-          <div class="issue-info">
-            <div class="issue-title">わかる！楽しい！算数図鑑</div>
-            <div class="issue-meta">小学館 ／ 978-4-09-344882-7</div>
-          </div>
-          <div class="issue-tag">所在不明</div>
-        </div>
-      </div>
-
-      <div class="card ghost" style="margin-bottom:10px;">
-        <div class="issue-section-hd">
-          <div class="issue-section-name">幽霊本</div>
-          <div class="issue-cnt">2冊</div>
-        </div>
-        <div class="issue-item">
-          <div class="issue-icon">📔</div>
-          <div class="issue-info">
-            <div class="issue-title">ふしぎの国のアリス</div>
-            <div class="issue-meta">返却記録あり — しかし棚でスキャン済み</div>
-          </div>
-          <div class="issue-tag">幽霊本</div>
-        </div>
-      </div>
-
-      <div class="card mismatch" style="margin-bottom:10px;">
-        <div class="issue-section-hd">
-          <div class="issue-section-name">データ不整合</div>
-          <div class="issue-cnt">1冊</div>
-        </div>
-        <div class="issue-item">
-          <div class="issue-icon">📓</div>
-          <div class="issue-info">
-            <div class="issue-title">宇宙のひみつ 完全版</div>
-            <div class="issue-meta">貸出中のはずが棚でスキャンされた</div>
-          </div>
-          <div class="issue-tag">不整合</div>
-        </div>
+      <div id="invIssueList">
+        <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">問題が見つかると表示されます</div>
       </div>
 
       <!-- スキャン履歴 -->
@@ -1478,21 +1409,7 @@ html, body {
       </div>
       <div class="card">
         <div class="scan-log" id="invLog">
-          <div class="log-item">
-            <div class="log-time">14:32</div>
-            <div class="log-dot ok"></div>
-            <div class="log-title">星の王子さま</div>
-          </div>
-          <div class="log-item">
-            <div class="log-time">14:31</div>
-            <div class="log-dot ok"></div>
-            <div class="log-title">ぐりとぐら</div>
-          </div>
-          <div class="log-item">
-            <div class="log-time">14:31</div>
-            <div class="log-dot warn"></div>
-            <div class="log-title">ふしぎの国のアリス（幽霊本）</div>
-          </div>
+          <div style="text-align:center;color:var(--text3);padding:16px;font-size:13px;">スキャン履歴がありません</div>
         </div>
       </div>
 
