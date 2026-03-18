@@ -2649,7 +2649,7 @@ async function renderBooksPage(schoolCd) {
       : '<div class="list-icon">📗</div>';
     const donatedBadge = b.is_donated ? '<span style="font-size:.7em;background:var(--gold-dim);color:var(--gold);padding:1px 6px;border-radius:8px;margin-left:4px;">🎁寄贈</span>' : '';
     const meta = [b.author, b.publisher].filter(Boolean).join(' ／ ') + (b.donated_by ? ' ／ 寄贈：' + b.donated_by : '');
-    return '<div class="list-item" onclick="openBookDetail(' + b.id + ')" style="pointer-events:all;cursor:pointer;">'
+    return '<div class="list-item" onclick="openBookDetail(\'' + b.id + '\')" style="pointer-events:all;cursor:pointer;">'
       + iconPart
       + '<div class="list-info" style="pointer-events:none;">'
       + '<div class="list-title">' + b.title + donatedBadge + '</div>'
