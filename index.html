@@ -2510,7 +2510,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('loginPassword')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') doLogin();
   });
-  updateThemeButtons(localStorage.getItem('appTheme') || 'dark')
+  updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
+
+  // 本の詳細遷移：イベントデリゲーション（book-detail-triggerクラス）
+  document.addEventListener('click', e => {
+    const trigger = e.target.closest('.book-detail-trigger');
+    if (trigger) {
+      const bookId = trigger.dataset.bookId;
+      if (bookId) openBookDetail(bookId);
+    }
+  });
 });
 
 // セッション復元（リロード時に再ログイン不要）
@@ -2649,7 +2658,7 @@ async function renderBooksPage(schoolCd) {
       : '<div class="list-icon">📗</div>';
     const donatedBadge = b.is_donated ? '<span style="font-size:.7em;background:var(--gold-dim);color:var(--gold);padding:1px 6px;border-radius:8px;margin-left:4px;">🎁寄贈</span>' : '';
     const meta = [b.author, b.publisher].filter(Boolean).join(' ／ ') + (b.donated_by ? ' ／ 寄贈：' + b.donated_by : '');
-    return '<div class="list-item" onclick="openBookDetail(\'' + b.id + '\')" style="pointer-events:all;cursor:pointer;">'
+    return '<div class="list-item book-detail-trigger" data-book-id="' + b.id + '" style="pointer-events:all;cursor:pointer;">'
       + iconPart
       + '<div class="list-info" style="pointer-events:none;">'
       + '<div class="list-title">' + b.title + donatedBadge + '</div>'
@@ -3057,7 +3066,7 @@ async function loadPopularByPeriod(schoolCd, period) {
     const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 10);
     popularList.innerHTML = sorted.length > 0
       ? sorted.map((b, i) => `
-        <div class="list-item" onclick="openBookDetail('${b.id}')" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
+        <div class="list-item book-detail-trigger" data-book-id="${b.id}" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
           <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i+1}</div>
           <div class="list-icon">📗</div>
           <div class="list-info">
@@ -3085,7 +3094,7 @@ async function loadPopularByPeriod(schoolCd, period) {
     const tSorted = Object.values(tc).sort((a, b) => b.count - a.count).slice(0, 10);
     rankingEl.innerHTML = tSorted.length > 0
       ? tSorted.map((b, i) => `
-        <div class="list-item" onclick="openBookDetail('${b.id}')" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
+        <div class="list-item book-detail-trigger" data-book-id="${b.id}" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
           <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i+1}</div>
           <div class="list-icon">📗</div>
           <div class="list-info">
@@ -3274,7 +3283,7 @@ function renderPopularRanking(data, targetId, schoolCds) {
     return;
   }
   el.innerHTML = sorted.map((b, i) => `
-    <div onclick="openBookDetail('${b.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
+    <div class="book-detail-trigger" data-book-id="${b.id}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
       <div style="font-family:monospace;font-size:15px;font-weight:700;color:${rankColors[i]};width:20px;flex-shrink:0;">${i+1}</div>
       <div style="font-size:12px;line-height:1.4;">
         <div style="font-weight:500;color:var(--text1);">${b.title}</div>
@@ -3307,7 +3316,7 @@ function renderCategoryPopular() {
     return;
   }
   el.innerHTML = sorted.map((b, i) => `
-    <div class="list-item" onclick="openBookDetail('${b.id}')" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
+    <div class="list-item book-detail-trigger" data-book-id="${b.id}" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
       <div style="font-family:monospace;font-size:18px;font-weight:700;color:${rankColors[Math.min(i,2)]};width:28px;flex-shrink:0;">${i+1}</div>
       <div class="list-icon">📗</div>
       <div class="list-info">
