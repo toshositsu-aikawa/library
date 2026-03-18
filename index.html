@@ -1564,59 +1564,16 @@ html, body {
         <button class="btn btn-primary" id="ppBtn-term" style="flex:1;font-size:12px;" onclick="setPopularPeriod('term')">今学期</button>
         <button class="btn btn-ghost" id="ppBtn-year"  style="flex:1;font-size:12px;" onclick="setPopularPeriod('year')">今年</button>
       </div>
-      <div class="card" style="margin-bottom:6px;" id="popularBooksList">
+
+      <!-- 本校ランキング -->
+      <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;padding-left:2px;">🏫 本校</div>
+      <div class="card" style="margin-bottom:16px;" id="popularBooksList">
         <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
       </div>
+
       <!-- 同校種ランキング -->
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;padding-left:4px;" id="schoolTypeRankingLabel"></div>
-      <div class="card" style="margin-bottom:14px;" id="schoolTypeRankingList"></div>
-
-      <!-- 除籍管理 -->
-      <div class="section-header-row" style="margin-top:8px;margin-bottom:10px;">
-        <div class="section-title-text">除籍管理</div>
-      </div>
-      <div class="card" style="margin-bottom:14px;">
-        <div class="list-item" onclick="openWithdrawList()">
-          <div class="list-icon" style="font-size:22px;">📤</div>
-          <div class="list-info">
-            <div class="list-title">除籍リスト・Excel出力</div>
-            <div class="list-meta">年度別除籍リストの確認・Excel出力</div>
-          </div>
-          <div style="color:var(--text3);font-size:18px;">›</div>
-        </div>
-        <div class="list-item" onclick="openBulkWithdrawModal()" style="border-top:1px solid var(--border);">
-          <div class="list-icon" style="font-size:22px;">🔍</div>
-          <div class="list-info">
-            <div class="list-title">一括除籍候補を検索</div>
-            <div class="list-meta">購入から○年以上経った本をリスト化</div>
-          </div>
-          <div style="color:var(--text3);font-size:18px;">›</div>
-        </div>
-      </div>
-
-      <!-- バックアップ -->
-      <div class="section-header-row" style="margin-top:8px;margin-bottom:10px;">
-        <div class="section-title-text">バックアップ・インポート</div>
-      </div>
-      <div class="card" style="margin-bottom:14px;">
-        <div style="padding:14px 16px;">
-          <div style="font-size:.85em;color:var(--text2);margin-bottom:14px;">現在の蔵書データをExcelに書き出します。半年〜1年に1回の定期的な保存を推奨します。</div>
-          <div id="backupLastDate" style="font-size:.8em;color:var(--text3);margin-bottom:14px;">前回のバックアップ: —</div>
-          <button class="btn btn-success" style="width:100%;margin-bottom:10px;" onclick="exportBackupExcel()">
-            💾 蔵書データをExcel出力
-          </button>
-          <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
-            <div style="font-size:.85em;color:var(--text2);margin-bottom:10px;">ExcelファイルからCSVまたはXLSXで蔵書データを一括インポートします。<br>既存データと比較して変更があれば自動更新、同じなら自動スキップします。</div>
-            <label style="display:block;width:100%;">
-              <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(this)">
-              <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('importFileInput').click()">
-                📥 Excelからインポート
-              </button>
-            </label>
-            <div id="importResult" style="margin-top:10px;"></div>
-          </div>
-        </div>
-      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;padding-left:2px;" id="schoolTypeRankingLabel"></div>
+      <div class="card" style="margin-bottom:16px;" id="schoolTypeRankingList"></div>
 
     </div>
     <!-- ===== /各学校ビュー ===== -->
@@ -1729,6 +1686,57 @@ html, body {
       </div>
     </div>
 
+    <!-- 除籍管理 -->
+    <div class="card" style="margin-bottom:10px;">
+      <div onclick="toggleAccordion('acc-withdraw')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="font-weight:700;font-size:15px;">📤 除籍管理</div>
+        <div id="acc-withdraw-icon" style="color:var(--text3);font-size:18px;">›</div>
+      </div>
+      <div id="acc-withdraw" style="display:none;padding:0 16px 16px;">
+        <div class="list-item" onclick="openWithdrawList()" style="border-radius:10px;background:var(--bg3);margin-bottom:8px;">
+          <div class="list-icon" style="font-size:22px;">📤</div>
+          <div class="list-info">
+            <div class="list-title">除籍リスト・Excel出力</div>
+            <div class="list-meta">年度別除籍リストの確認・Excel出力</div>
+          </div>
+          <div style="color:var(--text3);font-size:18px;">›</div>
+        </div>
+        <div class="list-item" onclick="openBulkWithdrawModal()" style="border-radius:10px;background:var(--bg3);">
+          <div class="list-icon" style="font-size:22px;">🔍</div>
+          <div class="list-info">
+            <div class="list-title">一括除籍候補を検索</div>
+            <div class="list-meta">購入から○年以上経った本をリスト化</div>
+          </div>
+          <div style="color:var(--text3);font-size:18px;">›</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- バックアップ・インポート -->
+    <div class="card" style="margin-bottom:10px;">
+      <div onclick="toggleAccordion('acc-backup')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="font-weight:700;font-size:15px;">💾 バックアップ・インポート</div>
+        <div id="acc-backup-icon" style="color:var(--text3);font-size:18px;">›</div>
+      </div>
+      <div id="acc-backup" style="display:none;padding:0 16px 16px;">
+        <div style="font-size:.85em;color:var(--text2);margin-bottom:14px;">現在の蔵書データをExcelに書き出します。半年〜1年に1回の定期的な保存を推奨します。</div>
+        <div id="backupLastDate" style="font-size:.8em;color:var(--text3);margin-bottom:14px;">前回のバックアップ: —</div>
+        <button class="btn btn-success" style="width:100%;margin-bottom:10px;" onclick="exportBackupExcel()">
+          💾 蔵書データをExcel出力
+        </button>
+        <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
+          <div style="font-size:.85em;color:var(--text2);margin-bottom:10px;">ExcelファイルからCSVまたはXLSXで蔵書データを一括インポートします。<br>既存データと比較して変更があれば自動更新、同じなら自動スキップします。</div>
+          <label style="display:block;width:100%;">
+            <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(this)">
+            <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('importFileInput').click()">
+              📥 Excelからインポート
+            </button>
+          </label>
+          <div id="importResult" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1755,7 +1763,7 @@ html, body {
   <div class="tab-item" id="tab-stats" onclick="switchTab('stats')">
     <div class="tab-indicator"></div>
     <div class="tab-icon">📊</div>
-    <div class="tab-label">統計・除籍</div>
+    <div class="tab-label">統計</div>
   </div>
   <div class="tab-item" id="tab-settings" onclick="switchTab('settings')">
     <div class="tab-indicator"></div>
@@ -2695,6 +2703,10 @@ function toggleAccordion(id) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
     if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
+    if (id === 'acc-backup') {
+      const el = document.getElementById('backupLastDate');
+      if (el) el.textContent = `前回のバックアップ: ${backupDates[currentSchoolCd] || '—'}`;
+    }
     if (id === 'acc-barcode') {
       const abbr = getSchoolAbbr(loginSchoolCd);
       const label = document.getElementById('barcodePrefixLabel');
@@ -3565,6 +3577,10 @@ function switchTab(tab) {
     // アコーディオンが開いている場合のみ読み込む
     if (document.getElementById('acc-rooms')?.style.display !== 'none') loadRoomShelfList();
     if (document.getElementById('acc-lang')?.style.display !== 'none') loadLanguageList();
+    if (document.getElementById('acc-backup')?.style.display !== 'none') {
+      const el = document.getElementById('backupLastDate');
+      if (el) el.textContent = `前回のバックアップ: ${backupDates[currentSchoolCd] || '—'}`;
+    }
   }
 
   if (tab === 'stats') {
