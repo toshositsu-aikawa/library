@@ -1459,8 +1459,10 @@ html, body {
       </div>
     </div>
 
-    <!-- 全校比較（管理者・町内全体モード時のみ表示） -->
+    <!-- ===== 町内全体ビュー（管理者のみ） ===== -->
     <div id="allSchoolStatsSection" style="display:none;">
+
+      <!-- 学校別比較テーブル -->
       <div class="section-header-row">
         <div class="section-title-text">学校別比較</div>
       </div>
@@ -1471,77 +1473,140 @@ html, body {
               <th style="text-align:left;padding:10px 12px;color:var(--text2);font-weight:600;">学校</th>
               <th style="text-align:right;padding:10px 8px;color:var(--blue);font-weight:600;">蔵書数</th>
               <th style="text-align:right;padding:10px 8px;color:var(--green);font-weight:600;">貸出中</th>
-              <th style="text-align:right;padding:10px 8px;color:var(--red);font-weight:600;">延滞</th>
             </tr>
           </thead>
           <tbody id="allSchoolTableBody">
-            <tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text3);">読み込み中…</td></tr>
+            <tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text3);">読み込み中…</td></tr>
           </tbody>
           <tfoot id="allSchoolTableFoot"></tfoot>
         </table>
       </div>
+
+      <!-- カテゴリー別貸出数 -->
       <div class="section-header-row">
-        <div class="section-title-text">町内の延滞状況</div>
+        <div class="section-title-text">カテゴリー別貸出数</div>
       </div>
-      <div class="card" style="margin-bottom:14px;" id="allOverdueList">
+      <!-- 切り替えタブ -->
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="btn btn-primary" id="catTab-all" style="flex:1;font-size:13px;" onclick="switchCatTab('all')">全体</button>
+        <button class="btn btn-ghost" id="catTab-elem" style="flex:1;font-size:13px;" onclick="switchCatTab('elem')">小学校</button>
+        <button class="btn btn-ghost" id="catTab-jhs" style="flex:1;font-size:13px;" onclick="switchCatTab('jhs')">中学校</button>
+      </div>
+      <div class="card" style="margin-bottom:14px;" id="categoryLentChart">
         <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
       </div>
-    </div>
 
-    <div class="section-header-row">
-      <div class="section-title-text">よく借りられている本</div>
-    </div>
-    <div class="card" style="margin-bottom:14px;" id="popularBooksList">
-      <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
-    </div>
-
-    <!-- 除籍リスト -->
-    <div class="section-header-row" style="margin-top:8px;margin-bottom:10px;">
-      <div class="section-title-text">除籍管理</div>
-    </div>
-    <div class="card" style="margin-bottom:14px;">
-      <div class="list-item" onclick="openWithdrawList()">
-        <div class="list-icon" style="font-size:22px;">📤</div>
-        <div class="list-info">
-          <div class="list-title">除籍リスト・Excel出力</div>
-          <div class="list-meta">年度別除籍リストの確認・Excel出力</div>
-        </div>
-        <div style="color:var(--text3);font-size:18px;">›</div>
+      <!-- カテゴリー別人気本 -->
+      <div class="section-header-row">
+        <div class="section-title-text">カテゴリー別人気本</div>
       </div>
-      <div class="list-item" onclick="openBulkWithdrawModal()" style="border-top:1px solid var(--border);">
-        <div class="list-icon" style="font-size:22px;">🔍</div>
-        <div class="list-info">
-          <div class="list-title">一括除籍候補を検索</div>
-          <div class="list-meta">購入から○年以上経った本をリスト化</div>
-        </div>
-        <div style="color:var(--text3);font-size:18px;">›</div>
+      <div style="margin-bottom:10px;">
+        <select id="categoryPopularSelect" class="form-input" onchange="renderCategoryPopular()" style="width:100%;">
+          <option value="">── カテゴリーを選択 ──</option>
+          <option value="絵本">絵本</option>
+          <option value="9類：文学">9類：文学</option>
+          <option value="8類：言語">8類：言語</option>
+          <option value="7類：芸術・体育">7類：芸術・体育</option>
+          <option value="6類：産業">6類：産業</option>
+          <option value="5類：技術・工学">5類：技術・工学</option>
+          <option value="4類：自然科学">4類：自然科学</option>
+          <option value="3類：社会科学">3類：社会科学</option>
+          <option value="2類：歴史・地理・伝記">2類：歴史・地理・伝記</option>
+          <option value="1類：哲学・心理">1類：哲学・心理</option>
+          <option value="0類：総記">0類：総記</option>
+          <option value="外国語">外国語</option>
+        </select>
       </div>
-    </div>
+      <div class="card" style="margin-bottom:14px;" id="categoryPopularList">
+        <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">カテゴリーを選択してください</div>
+      </div>
 
-    <!-- バックアップ -->
-    <div class="section-header-row" style="margin-top:8px;margin-bottom:10px;">
-      <div class="section-title-text">バックアップ・インポート</div>
-    </div>
-    <div class="card" style="margin-bottom:14px;">
-      <div style="padding:14px 16px;">
-        <div style="font-size:.85em;color:var(--text2);margin-bottom:14px;">現在の蔵書データをExcelに書き出します。半年〜1年に1回の定期的な保存を推奨します。</div>
-        <div id="backupLastDate" style="font-size:.8em;color:var(--text3);margin-bottom:14px;">前回のバックアップ: —</div>
-        <button class="btn btn-success" style="width:100%;margin-bottom:10px;" onclick="exportBackupExcel()">
-          💾 蔵書データをExcel出力
-        </button>
-
-        <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
-          <div style="font-size:.85em;color:var(--text2);margin-bottom:10px;">ExcelファイルからCSVまたはXLSXで蔵書データを一括インポートします。<br>既存データと比較して変更があれば自動更新、同じなら自動スキップします。</div>
-          <label style="display:block;width:100%;">
-            <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(this)">
-            <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('importFileInput').click()">
-              📥 Excelからインポート
-            </button>
-          </label>
-          <div id="importResult" style="margin-top:10px;"></div>
+      <!-- よく借りられている本（全体・小学校・中学校） -->
+      <div class="section-header-row">
+        <div class="section-title-text">よく借りられている本</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;text-align:center;">🏘️ 町内全体</div>
+          <div class="card" id="popularAll" style="padding:0;"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--blue);margin-bottom:6px;text-align:center;">🏫 小学校</div>
+          <div class="card" id="popularElem" style="padding:0;"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px;text-align:center;">🏫 中学校</div>
+          <div class="card" id="popularJhs" style="padding:0;"></div>
         </div>
       </div>
+
     </div>
+    <!-- ===== /町内全体ビュー ===== -->
+
+    <!-- ===== 各学校ビュー ===== -->
+    <div id="singleSchoolStatsSection">
+
+      <!-- よく借りられている本（本校） -->
+      <div class="section-header-row">
+        <div class="section-title-text">よく借りられている本</div>
+      </div>
+      <div class="card" style="margin-bottom:6px;" id="popularBooksList">
+        <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
+      </div>
+      <!-- 同校種ランキング -->
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px;padding-left:4px;" id="schoolTypeRankingLabel"></div>
+      <div class="card" style="margin-bottom:14px;" id="schoolTypeRankingList" style="display:none;"></div>
+
+      <!-- 除籍管理 -->
+      <div class="section-header-row" style="margin-top:8px;margin-bottom:10px;">
+        <div class="section-title-text">除籍管理</div>
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="list-item" onclick="openWithdrawList()">
+          <div class="list-icon" style="font-size:22px;">📤</div>
+          <div class="list-info">
+            <div class="list-title">除籍リスト・Excel出力</div>
+            <div class="list-meta">年度別除籍リストの確認・Excel出力</div>
+          </div>
+          <div style="color:var(--text3);font-size:18px;">›</div>
+        </div>
+        <div class="list-item" onclick="openBulkWithdrawModal()" style="border-top:1px solid var(--border);">
+          <div class="list-icon" style="font-size:22px;">🔍</div>
+          <div class="list-info">
+            <div class="list-title">一括除籍候補を検索</div>
+            <div class="list-meta">購入から○年以上経った本をリスト化</div>
+          </div>
+          <div style="color:var(--text3);font-size:18px;">›</div>
+        </div>
+      </div>
+
+      <!-- バックアップ -->
+      <div class="section-header-row" style="margin-top:8px;margin-bottom:10px;">
+        <div class="section-title-text">バックアップ・インポート</div>
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <div style="padding:14px 16px;">
+          <div style="font-size:.85em;color:var(--text2);margin-bottom:14px;">現在の蔵書データをExcelに書き出します。半年〜1年に1回の定期的な保存を推奨します。</div>
+          <div id="backupLastDate" style="font-size:.8em;color:var(--text3);margin-bottom:14px;">前回のバックアップ: —</div>
+          <button class="btn btn-success" style="width:100%;margin-bottom:10px;" onclick="exportBackupExcel()">
+            💾 蔵書データをExcel出力
+          </button>
+          <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
+            <div style="font-size:.85em;color:var(--text2);margin-bottom:10px;">ExcelファイルからCSVまたはXLSXで蔵書データを一括インポートします。<br>既存データと比較して変更があれば自動更新、同じなら自動スキップします。</div>
+            <label style="display:block;width:100%;">
+              <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(this)">
+              <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('importFileInput').click()">
+                📥 Excelからインポート
+              </button>
+            </label>
+            <div id="importResult" style="margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <!-- ===== /各学校ビュー ===== -->
+
   </div>
 </div>
 
@@ -2886,92 +2951,192 @@ function openPrintWindow(ids, title, type) {
 // ============================================================
 // 町内全体統計
 // ============================================================
+
+// カテゴリー別貸出データのキャッシュ（タブ切り替え用）
+let _allLendingsCache = null;
+
 async function loadAllSchoolStats() {
-  const today = new Date().toISOString().slice(0, 10);
+  _allLendingsCache = null;
+
+  const el = id => document.getElementById(id);
 
   // school_stats から全校一括取得
   const { data: statsData } = await db.from('school_stats').select('*');
   if (!statsData) return;
 
-  const el = id => document.getElementById(id);
-
   // 合計をヘッダーのstat-boxに反映
   const totalCopies  = statsData.reduce((s, r) => s + Number(r.total_copies  || 0), 0);
   const totalLent    = statsData.reduce((s, r) => s + Number(r.currently_lent || 0), 0);
-  const totalOverdue = statsData.reduce((s, r) => s + Number(r.overdue_count  || 0), 0);
   const totalTitles  = statsData.reduce((s, r) => s + Number(r.total_titles   || 0), 0);
-
-  if (el('statsTotal'))        el('statsTotal').textContent        = totalTitles.toLocaleString();
-  if (el('statsMonthLent'))    el('statsMonthLent').textContent    = totalLent;
-  if (el('statsMonthReturned'))el('statsMonthReturned').textContent= '—';
-  if (el('statsOverdue'))      el('statsOverdue').textContent      = totalOverdue;
+  if (el('statsTotal'))         el('statsTotal').textContent         = totalTitles.toLocaleString();
+  if (el('statsMonthLent'))     el('statsMonthLent').textContent     = totalLent;
+  if (el('statsMonthReturned')) el('statsMonthReturned').textContent = '—';
+  if (el('statsOverdue'))       el('statsOverdue').textContent       = '—';
 
   // 学校名マップ
   const nameMap = {};
   SCHOOLS.forEach(s => nameMap[s.cd] = s.name);
 
-  // 学校別テーブル描画
+  // 学校別比較テーブル
   const tbody = el('allSchoolTableBody');
   const tfoot = el('allSchoolTableFoot');
   if (tbody) {
-    // 蔵書数降順でソート
     const sorted = [...statsData].sort((a, b) => Number(b.total_copies || 0) - Number(a.total_copies || 0));
-    tbody.innerHTML = sorted.map(s => {
-      const overdue = Number(s.overdue_count || 0);
-      return `<tr style="border-bottom:1px solid var(--border);">
+    tbody.innerHTML = sorted.map(s => `
+      <tr style="border-bottom:1px solid var(--border);">
         <td style="padding:10px 12px;font-weight:500;">${nameMap[s.school_cd] || s.school_cd}</td>
         <td style="text-align:right;padding:10px 8px;color:var(--blue);">${Number(s.total_copies || 0).toLocaleString()}</td>
         <td style="text-align:right;padding:10px 8px;color:var(--green);">${Number(s.currently_lent || 0)}</td>
-        <td style="text-align:right;padding:10px 8px;${overdue > 0 ? 'color:var(--red);font-weight:700;' : 'color:var(--text3);'}">${overdue > 0 ? overdue : '—'}</td>
-      </tr>`;
-    }).join('');
-    // 合計行
-    if (tfoot) {
-      tfoot.innerHTML = `<tr style="border-top:2px solid var(--border2);background:var(--bg2);">
+      </tr>`).join('');
+    if (tfoot) tfoot.innerHTML = `
+      <tr style="border-top:2px solid var(--border2);background:var(--bg2);">
         <td style="padding:10px 12px;font-weight:700;">合計</td>
         <td style="text-align:right;padding:10px 8px;color:var(--blue);font-weight:700;">${totalCopies.toLocaleString()}</td>
         <td style="text-align:right;padding:10px 8px;color:var(--green);font-weight:700;">${totalLent}</td>
-        <td style="text-align:right;padding:10px 8px;color:var(--red);font-weight:700;">${totalOverdue > 0 ? totalOverdue : '—'}</td>
       </tr>`;
-    }
   }
 
-  // 延滞一覧（全校）
-  const overdueEl = el('allOverdueList');
-  if (overdueEl) {
-    if (totalOverdue === 0) {
-      overdueEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">延滞はありません ✅</div>';
-    } else {
-      const { data: overdueData } = await db.from('lendings')
-        .select('school_cd, user_id, due_at, books(title)')
-        .is('returned_at', null)
-        .lt('due_at', today)
-        .order('due_at', { ascending: true })
-        .limit(30);
-      if (overdueData && overdueData.length > 0) {
-        overdueEl.innerHTML = overdueData.map(o => {
-          const daysOver = Math.floor((new Date(today) - new Date(o.due_at)) / 86400000);
-          const schoolName = nameMap[o.school_cd] || o.school_cd;
-          return `<div class="list-item">
-            <div class="list-icon" style="font-size:20px;">⚠️</div>
-            <div class="list-info">
-              <div class="list-title">${o.books?.title || '不明'}</div>
-              <div class="list-meta">${schoolName} ／ ${o.user_id || '—'} ／ 返却期限: ${o.due_at}（<span style="color:var(--red);">${daysOver}日超過</span>）</div>
-            </div>
-          </div>`;
-        }).join('');
-        if (overdueData.length === 30) {
-          overdueEl.innerHTML += '<div style="text-align:center;color:var(--text3);padding:10px;font-size:12px;">※上位30件を表示</div>';
-        }
-      } else {
-        overdueEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">延滞データを取得できませんでした</div>';
-      }
-    }
-  }
+  // 全貸出データ取得（カテゴリー・人気本に使い回す）
+  const { data: allLendings } = await db.from('lendings')
+    .select('school_cd, book_id, books(title, category, isbn)');
+  _allLendingsCache = allLendings || [];
 
-  // よく借りられている本は全校モードでは非表示
-  const popularEl = el('popularBooksList');
-  if (popularEl) popularEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">町内全体ビューでは表示されません</div>';
+  // カテゴリー別貸出（デフォルト：全体）
+  switchCatTab('all');
+
+  // よく借りられている本（全体・小学校・中学校）
+  renderPopularRanking(_allLendingsCache, 'popularAll',  null);
+  renderPopularRanking(_allLendingsCache, 'popularElem', ['50301','50302','50303','50304','50305','50306']);
+  renderPopularRanking(_allLendingsCache, 'popularJhs',  ['50401','50402','50403']);
+
+  // カテゴリー別人気本リセット
+  if (el('categoryPopularSelect')) el('categoryPopularSelect').value = '';
+  if (el('categoryPopularList'))   el('categoryPopularList').innerHTML =
+    '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">カテゴリーを選択してください</div>';
+}
+
+// カテゴリー切り替えタブ
+let _currentCatTab = 'all';
+const ELEM_CDS = ['50301','50302','50303','50304','50305','50306'];
+const JHS_CDS  = ['50401','50402','50403'];
+
+function switchCatTab(tab) {
+  _currentCatTab = tab;
+  ['all','elem','jhs'].forEach(t => {
+    const btn = document.getElementById('catTab-' + t);
+    if (btn) btn.className = 'btn ' + (t === tab ? 'btn-primary' : 'btn-ghost');
+  });
+  if (!_allLendingsCache) return;
+  let data = _allLendingsCache;
+  if (tab === 'elem') data = data.filter(l => ELEM_CDS.includes(l.school_cd));
+  if (tab === 'jhs')  data = data.filter(l => JHS_CDS.includes(l.school_cd));
+  renderCategoryChart(data);
+}
+
+// カテゴリー別貸出数をバーグラフで描画
+const NDC_ORDER = ['絵本','9類：文学','8類：言語','7類：芸術・体育','6類：産業',
+  '5類：技術・工学','4類：自然科学','3類：社会科学','2類：歴史・地理・伝記','1類：哲学・心理','0類：総記','外国語'];
+const NDC_COLORS = {
+  '絵本':'var(--yellow)','9類：文学':'var(--blue)','8類：言語':'var(--green)',
+  '7類：芸術・体育':'var(--red)','6類：産業':'var(--text2)','5類：技術・工学':'var(--text2)',
+  '4類：自然科学':'var(--blue)','3類：社会科学':'var(--green)','2類：歴史・地理・伝記':'var(--yellow)',
+  '1類：哲学・心理':'var(--text2)','0類：総記':'var(--text3)','外国語':'var(--blue)',
+};
+
+function renderCategoryChart(data) {
+  const el = document.getElementById('categoryLentChart');
+  if (!el) return;
+  const counts = {};
+  data.forEach(l => {
+    const cat = l.books?.category || '未分類';
+    counts[cat] = (counts[cat] || 0) + 1;
+  });
+  const total = Object.values(counts).reduce((s, v) => s + v, 0);
+  if (total === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">貸出データがありません</div>';
+    return;
+  }
+  const sorted = NDC_ORDER
+    .filter(k => counts[k])
+    .map(k => ({ cat: k, count: counts[k] }))
+    .concat(Object.entries(counts).filter(([k]) => !NDC_ORDER.includes(k)).map(([k, v]) => ({ cat: k, count: v })))
+    .sort((a, b) => b.count - a.count);
+  const max = sorted[0].count;
+  el.innerHTML = '<div style="padding:12px 16px;">' +
+    sorted.map(({ cat, count }) => {
+      const pct = Math.round(count / max * 100);
+      const color = NDC_COLORS[cat] || 'var(--text2)';
+      return `<div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+          <span style="color:var(--text1);font-weight:500;">${cat}</span>
+          <span style="color:var(--text2);">${count}冊</span>
+        </div>
+        <div style="background:var(--border);border-radius:4px;height:8px;">
+          <div style="width:${pct}%;background:${color};border-radius:4px;height:8px;transition:width .4s;"></div>
+        </div>
+      </div>`;
+    }).join('') + '</div>';
+}
+
+// よく借りられている本（指定school_cdリストでフィルタ）
+function renderPopularRanking(data, targetId, schoolCds) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  const filtered = schoolCds ? data.filter(l => schoolCds.includes(l.school_cd)) : data;
+  const counts = {};
+  filtered.forEach(l => {
+    if (!l.books) return;
+    if (!counts[l.book_id]) counts[l.book_id] = { title: l.books.title, count: 0 };
+    counts[l.book_id].count++;
+  });
+  const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
+  const rankColors = ['var(--yellow)','var(--text2)','var(--text3)','var(--text3)','var(--text3)'];
+  if (sorted.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:16px;font-size:12px;">データなし</div>';
+    return;
+  }
+  el.innerHTML = sorted.map((b, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
+      <div style="font-family:monospace;font-size:15px;font-weight:700;color:${rankColors[i]};width:20px;flex-shrink:0;">${i+1}</div>
+      <div style="font-size:12px;line-height:1.4;">
+        <div style="font-weight:500;color:var(--text1);">${b.title}</div>
+        <div style="color:var(--text3);">${b.count}回</div>
+      </div>
+    </div>`).join('');
+}
+
+// カテゴリー別人気本
+function renderCategoryPopular() {
+  const cat = document.getElementById('categoryPopularSelect')?.value;
+  const el  = document.getElementById('categoryPopularList');
+  if (!el) return;
+  if (!cat) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">カテゴリーを選択してください</div>';
+    return;
+  }
+  if (!_allLendingsCache) return;
+  const filtered = _allLendingsCache.filter(l => l.books?.category === cat);
+  const counts = {};
+  filtered.forEach(l => {
+    if (!l.books) return;
+    if (!counts[l.book_id]) counts[l.book_id] = { title: l.books.title, count: 0 };
+    counts[l.book_id].count++;
+  });
+  const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 10);
+  const rankColors = ['var(--yellow)','var(--text2)','var(--text3)'];
+  if (sorted.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">このカテゴリーの貸出データがありません</div>';
+    return;
+  }
+  el.innerHTML = sorted.map((b, i) => `
+    <div class="list-item" ${i > 0 ? 'style="border-top:1px solid var(--border);"' : ''}>
+      <div style="font-family:monospace;font-size:18px;font-weight:700;color:${rankColors[Math.min(i,2)]};width:28px;flex-shrink:0;">${i+1}</div>
+      <div class="list-icon">📗</div>
+      <div class="list-info">
+        <div class="list-title">${b.title}</div>
+        <div class="list-meta">累計 ${b.count}回貸出</div>
+      </div>
+    </div>`).join('');
 }
 
 async function loadStatsPage(schoolCd) {
@@ -3020,32 +3185,68 @@ async function loadStatsPage(schoolCd) {
     .not('books', 'is', null);
 
   const popularList = el('popularBooksList');
-  if (popularList && popularData && popularData.length > 0) {
-    // 集計
-    const counts = {};
-    popularData.forEach(l => {
-      if (!l.books) return;
-      const key = l.book_id;
-      if (!counts[key]) counts[key] = { title: l.books.title, count: 0 };
-      counts[key].count++;
-    });
-    const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
-    const rankColors = ['var(--yellow)', 'var(--text2)', 'var(--text3)', 'var(--text3)', 'var(--text3)'];
-    if (sorted.length > 0) {
-      popularList.innerHTML = sorted.map((b, i) => `
-        <div class="list-item">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i + 1}</div>
-          <div class="list-icon">📗</div>
-          <div class="list-info">
-            <div class="list-title">${b.title}</div>
-            <div class="list-meta">累計 ${b.count}回貸出</div>
-          </div>
-        </div>`).join('');
+  const rankColors = ['var(--yellow)', 'var(--text2)', 'var(--text3)', 'var(--text3)', 'var(--text3)'];
+  if (popularList) {
+    if (popularData && popularData.length > 0) {
+      const counts = {};
+      popularData.forEach(l => {
+        if (!l.books) return;
+        if (!counts[l.book_id]) counts[l.book_id] = { title: l.books.title, count: 0 };
+        counts[l.book_id].count++;
+      });
+      const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
+      popularList.innerHTML = sorted.length > 0
+        ? sorted.map((b, i) => `
+          <div class="list-item">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i + 1}</div>
+            <div class="list-icon">📗</div>
+            <div class="list-info">
+              <div class="list-title">${b.title}</div>
+              <div class="list-meta">累計 ${b.count}回貸出</div>
+            </div>
+          </div>`).join('')
+        : '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">貸出データがありません</div>';
     } else {
       popularList.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">貸出データがありません</div>';
     }
-  } else if (popularList) {
-    popularList.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">貸出データがありません</div>';
+  }
+
+  // 同校種ランキング（小学校 → 小6校合計、中学校 → 中3校合計）
+  const isElem    = ELEM_CDS.includes(schoolCd);
+  const typeCds   = isElem ? ELEM_CDS : JHS_CDS;
+  const typeLabel = isElem ? '小学校6校' : '中学校3校';
+  const labelEl   = el('schoolTypeRankingLabel');
+  const rankingEl = el('schoolTypeRankingList');
+  if (labelEl)   labelEl.textContent = `🏘️ ${typeLabel}全体で人気の本`;
+  if (rankingEl) {
+    rankingEl.style.display = '';
+    rankingEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:12px;font-size:13px;">読み込み中…</div>';
+    const { data: typeLendings } = await db.from('lendings')
+      .select('book_id, school_cd, books(title)')
+      .in('school_cd', typeCds)
+      .not('books', 'is', null);
+    if (typeLendings && typeLendings.length > 0) {
+      const tc = {};
+      typeLendings.forEach(l => {
+        if (!l.books) return;
+        if (!tc[l.book_id]) tc[l.book_id] = { title: l.books.title, count: 0 };
+        tc[l.book_id].count++;
+      });
+      const tSorted = Object.values(tc).sort((a, b) => b.count - a.count).slice(0, 5);
+      rankingEl.innerHTML = tSorted.length > 0
+        ? tSorted.map((b, i) => `
+          <div class="list-item" ${i > 0 ? 'style="border-top:1px solid var(--border);"' : ''}>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i + 1}</div>
+            <div class="list-icon">📗</div>
+            <div class="list-info">
+              <div class="list-title">${b.title}</div>
+              <div class="list-meta">累計 ${b.count}回貸出</div>
+            </div>
+          </div>`).join('')
+        : '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">データがありません</div>';
+    } else {
+      rankingEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">データがありません</div>';
+    }
   }
 }
 
@@ -3324,8 +3525,10 @@ function updateGuestMode(cd) {
   if (scanGo)   scanGo.style.opacity = (isGuest || isAll) ? '0.3' : '1';
   if (scanGo)   scanGo.style.pointerEvents = (isGuest || isAll) ? 'none' : '';
   // 統計タブ：全校比較セクション表示切り替え
-  const allSection = document.getElementById('allSchoolStatsSection');
-  if (allSection) allSection.style.display = isAll ? '' : 'none';
+  const allSection    = document.getElementById('allSchoolStatsSection');
+  const singleSection = document.getElementById('singleSchoolStatsSection');
+  if (allSection)    allSection.style.display    = isAll ? '' : 'none';
+  if (singleSection) singleSection.style.display = isAll ? 'none' : '';
   // 他校モード／町内全体モードの案内バナー
   let banner = document.getElementById('guestBanner');
   if (isGuest || isAll) {
