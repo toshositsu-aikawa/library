@@ -2133,7 +2133,7 @@ html, body {
         </button>
       </div>
 
-      <!-- 結果件数 + 全選択 -->
+      <!-- 結果件数 + 全選択 + ソート -->
       <div id="bulkWithdrawSummary" style="display:none;margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <div id="bulkWithdrawCount" style="font-size:.9em;color:var(--text2);"></div>
@@ -2141,6 +2141,12 @@ html, body {
             <button onclick="toggleSelectAllBulk(true)" style="font-size:.8em;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text1);cursor:pointer;">全選択</button>
             <button onclick="toggleSelectAllBulk(false)" style="font-size:.8em;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text1);cursor:pointer;">全解除</button>
           </div>
+        </div>
+        <!-- ソートボタン -->
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <button id="bwSort-reg"      class="btn btn-primary" style="flex:1;font-size:11px;padding:5px 4px;" onclick="setBulkSort('reg')">登録番号順</button>
+          <button id="bwSort-title"    class="btn btn-ghost"   style="flex:1;font-size:11px;padding:5px 4px;" onclick="setBulkSort('title')">あいうえお順</button>
+          <button id="bwSort-delivery" class="btn btn-ghost"   style="flex:1;font-size:11px;padding:5px 4px;" onclick="setBulkSort('delivery')">納品順</button>
         </div>
         <div id="bulkWithdrawSelected" style="font-size:.85em;color:var(--orange);font-weight:600;"></div>
       </div>
@@ -4801,6 +4807,11 @@ function openBulkWithdrawModal() {
   });
   // リセット
   bulkWithdrawBooks = [];
+  _bulkSortKey = 'reg';
+  ['reg','title','delivery'].forEach(k => {
+    const btn = document.getElementById('bwSort-' + k);
+    if (btn) btn.className = 'btn ' + (k === 'reg' ? 'btn-primary' : 'btn-ghost');
+  });
   document.getElementById('bulkWithdrawList').innerHTML = '';
   document.getElementById('bulkWithdrawSummary').style.display = 'none';
   document.getElementById('bulkWithdrawActionsTop').style.display = 'none';
@@ -4838,19 +4849,58 @@ async function searchBulkWithdraw() {
   renderBulkWithdrawList();
 }
 
+let _bulkSortKey = 'reg'; // デフォルト：登録番号順
+
+function setBulkSort(key) {
+  _bulkSortKey = key;
+  ['reg','title','delivery'].forEach(k => {
+    const btn = document.getElementById('bwSort-' + k);
+    if (btn) btn.className = 'btn ' + (k === key ? 'btn-primary' : 'btn-ghost');
+  });
+  renderBulkWithdrawList();
+}
+
+function sortBulkWithdrawBooks(books) {
+  const arr = [...books];
+  if (_bulkSortKey === 'reg') {
+    arr.sort((a, b) => {
+      const ra = a.registration_no || '';
+      const rb = b.registration_no || '';
+      if (!ra && !rb) return 0;
+      if (!ra) return 1;
+      if (!rb) return -1;
+      return ra.localeCompare(rb, 'ja', { numeric: true });
+    });
+  } else if (_bulkSortKey === 'title') {
+    arr.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
+  } else if (_bulkSortKey === 'delivery') {
+    arr.sort((a, b) => {
+      const da = a.delivery_date || (a.purchase_fiscal_year ? `${a.purchase_fiscal_year}-04-01` : '');
+      const db_ = b.delivery_date || (b.purchase_fiscal_year ? `${b.purchase_fiscal_year}-04-01` : '');
+      if (!da && !db_) return 0;
+      if (!da) return 1;
+      if (!db_) return -1;
+      return da.localeCompare(db_);
+    });
+  }
+  return arr;
+}
+
 function renderBulkWithdrawList() {
   const selectedCount = bulkWithdrawBooks.filter(b => b.selected).length;
   document.getElementById('bulkWithdrawSelected').textContent =
     selectedCount > 0 ? `${selectedCount}件 選択中` : '';
 
-  document.getElementById('bulkWithdrawList').innerHTML = bulkWithdrawBooks.map((b, i) => {
+  const sorted = sortBulkWithdrawBooks(bulkWithdrawBooks);
+  document.getElementById('bulkWithdrawList').innerHTML = sorted.map((b, i) => {
+    const origIndex = bulkWithdrawBooks.indexOf(b);
     const yearLabel = b.purchase_fiscal_year
       ? `令和${b.purchase_fiscal_year - 2018}年度購入`
       : b.delivery_date
         ? `${b.delivery_date.slice(0,10)} 納品`
         : '購入年度不明';
     return `
-      <div onclick="toggleBulkItem(${i})" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${b.selected ? 'var(--orange-dim, rgba(255,140,0,.15))' : 'var(--bg3)'};border-radius:10px;margin-bottom:6px;cursor:pointer;border:1.5px solid ${b.selected ? 'var(--orange)' : 'transparent'};">
+      <div onclick="toggleBulkItem(${origIndex})" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${b.selected ? 'var(--orange-dim, rgba(255,140,0,.15))' : 'var(--bg3)'};border-radius:10px;margin-bottom:6px;cursor:pointer;border:1.5px solid ${b.selected ? 'var(--orange)' : 'transparent'};">
         <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${b.selected ? 'var(--orange)' : 'var(--border)'};background:${b.selected ? 'var(--orange)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           ${b.selected ? '<span style="color:#000;font-size:14px;font-weight:700;">✓</span>' : ''}
         </div>
