@@ -2660,7 +2660,7 @@ async function renderBooksPage(schoolCd) {
     const meta = [b.author, b.publisher].filter(Boolean).join(' ／ ') + (b.donated_by ? ' ／ 寄贈：' + b.donated_by : '');
     return '<div class="list-item book-detail-trigger" data-book-id="' + b.id + '" style="pointer-events:all;cursor:pointer;">'
       + iconPart
-      + '<div class="list-info" style="pointer-events:none;">'
+      + '<div class="list-info">'
       + '<div class="list-title">' + b.title + donatedBadge + '</div>'
       + '<div class="list-meta">' + meta + '</div>'
       + '</div>'
