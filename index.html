@@ -1459,6 +1459,35 @@ html, body {
       </div>
     </div>
 
+    <!-- 全校比較（管理者・町内全体モード時のみ表示） -->
+    <div id="allSchoolStatsSection" style="display:none;">
+      <div class="section-header-row">
+        <div class="section-title-text">学校別比較</div>
+      </div>
+      <div class="card" style="margin-bottom:14px;overflow-x:auto;">
+        <table id="allSchoolTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border2);">
+              <th style="text-align:left;padding:10px 12px;color:var(--text2);font-weight:600;">学校</th>
+              <th style="text-align:right;padding:10px 8px;color:var(--blue);font-weight:600;">蔵書数</th>
+              <th style="text-align:right;padding:10px 8px;color:var(--green);font-weight:600;">貸出中</th>
+              <th style="text-align:right;padding:10px 8px;color:var(--red);font-weight:600;">延滞</th>
+            </tr>
+          </thead>
+          <tbody id="allSchoolTableBody">
+            <tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text3);">読み込み中…</td></tr>
+          </tbody>
+          <tfoot id="allSchoolTableFoot"></tfoot>
+        </table>
+      </div>
+      <div class="section-header-row">
+        <div class="section-title-text">町内の延滞状況</div>
+      </div>
+      <div class="card" style="margin-bottom:14px;" id="allOverdueList">
+        <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
+      </div>
+    </div>
+
     <div class="section-header-row">
       <div class="section-title-text">よく借りられている本</div>
     </div>
@@ -1723,6 +1752,12 @@ html, body {
           <div class="school-card-type">中学校</div>
           <div class="school-card-name">愛川中原中学校</div>
           <div class="school-card-count" id="cnt-50403">読込中…</div>
+          <div class="school-card-check">✓</div>
+        </div>
+        <div class="school-card" id="allSchoolCard" style="display:none;grid-column:1/-1;border:2px solid var(--blue);" onclick="switchSchool(this,'all','🏘️ 町内全体')">
+          <div class="school-card-type" style="color:var(--blue);">管理者</div>
+          <div class="school-card-name">🏘️ 町内全体</div>
+          <div class="school-card-count" id="cnt-all">集計中…</div>
           <div class="school-card-check">✓</div>
         </div>
       </div>
@@ -2848,7 +2883,102 @@ function openPrintWindow(ids, title, type) {
 // ============================================================
 // 統計ページのデータ読み込み
 // ============================================================
+// ============================================================
+// 町内全体統計
+// ============================================================
+async function loadAllSchoolStats() {
+  const today = new Date().toISOString().slice(0, 10);
+
+  // school_stats から全校一括取得
+  const { data: statsData } = await db.from('school_stats').select('*');
+  if (!statsData) return;
+
+  const el = id => document.getElementById(id);
+
+  // 合計をヘッダーのstat-boxに反映
+  const totalCopies  = statsData.reduce((s, r) => s + Number(r.total_copies  || 0), 0);
+  const totalLent    = statsData.reduce((s, r) => s + Number(r.currently_lent || 0), 0);
+  const totalOverdue = statsData.reduce((s, r) => s + Number(r.overdue_count  || 0), 0);
+  const totalTitles  = statsData.reduce((s, r) => s + Number(r.total_titles   || 0), 0);
+
+  if (el('statsTotal'))        el('statsTotal').textContent        = totalTitles.toLocaleString();
+  if (el('statsMonthLent'))    el('statsMonthLent').textContent    = totalLent;
+  if (el('statsMonthReturned'))el('statsMonthReturned').textContent= '—';
+  if (el('statsOverdue'))      el('statsOverdue').textContent      = totalOverdue;
+
+  // 学校名マップ
+  const nameMap = {};
+  SCHOOLS.forEach(s => nameMap[s.cd] = s.name);
+
+  // 学校別テーブル描画
+  const tbody = el('allSchoolTableBody');
+  const tfoot = el('allSchoolTableFoot');
+  if (tbody) {
+    // 蔵書数降順でソート
+    const sorted = [...statsData].sort((a, b) => Number(b.total_copies || 0) - Number(a.total_copies || 0));
+    tbody.innerHTML = sorted.map(s => {
+      const overdue = Number(s.overdue_count || 0);
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;font-weight:500;">${nameMap[s.school_cd] || s.school_cd}</td>
+        <td style="text-align:right;padding:10px 8px;color:var(--blue);">${Number(s.total_copies || 0).toLocaleString()}</td>
+        <td style="text-align:right;padding:10px 8px;color:var(--green);">${Number(s.currently_lent || 0)}</td>
+        <td style="text-align:right;padding:10px 8px;${overdue > 0 ? 'color:var(--red);font-weight:700;' : 'color:var(--text3);'}">${overdue > 0 ? overdue : '—'}</td>
+      </tr>`;
+    }).join('');
+    // 合計行
+    if (tfoot) {
+      tfoot.innerHTML = `<tr style="border-top:2px solid var(--border2);background:var(--bg2);">
+        <td style="padding:10px 12px;font-weight:700;">合計</td>
+        <td style="text-align:right;padding:10px 8px;color:var(--blue);font-weight:700;">${totalCopies.toLocaleString()}</td>
+        <td style="text-align:right;padding:10px 8px;color:var(--green);font-weight:700;">${totalLent}</td>
+        <td style="text-align:right;padding:10px 8px;color:var(--red);font-weight:700;">${totalOverdue > 0 ? totalOverdue : '—'}</td>
+      </tr>`;
+    }
+  }
+
+  // 延滞一覧（全校）
+  const overdueEl = el('allOverdueList');
+  if (overdueEl) {
+    if (totalOverdue === 0) {
+      overdueEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">延滞はありません ✅</div>';
+    } else {
+      const { data: overdueData } = await db.from('lendings')
+        .select('school_cd, user_id, due_at, books(title)')
+        .is('returned_at', null)
+        .lt('due_at', today)
+        .order('due_at', { ascending: true })
+        .limit(30);
+      if (overdueData && overdueData.length > 0) {
+        overdueEl.innerHTML = overdueData.map(o => {
+          const daysOver = Math.floor((new Date(today) - new Date(o.due_at)) / 86400000);
+          const schoolName = nameMap[o.school_cd] || o.school_cd;
+          return `<div class="list-item">
+            <div class="list-icon" style="font-size:20px;">⚠️</div>
+            <div class="list-info">
+              <div class="list-title">${o.books?.title || '不明'}</div>
+              <div class="list-meta">${schoolName} ／ ${o.user_id || '—'} ／ 返却期限: ${o.due_at}（<span style="color:var(--red);">${daysOver}日超過</span>）</div>
+            </div>
+          </div>`;
+        }).join('');
+        if (overdueData.length === 30) {
+          overdueEl.innerHTML += '<div style="text-align:center;color:var(--text3);padding:10px;font-size:12px;">※上位30件を表示</div>';
+        }
+      } else {
+        overdueEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">延滞データを取得できませんでした</div>';
+      }
+    }
+  }
+
+  // よく借りられている本は全校モードでは非表示
+  const popularEl = el('popularBooksList');
+  if (popularEl) popularEl.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">町内全体ビューでは表示されません</div>';
+}
+
 async function loadStatsPage(schoolCd) {
+  if (schoolCd === 'all') {
+    await loadAllSchoolStats();
+    return;
+  }
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const today = now.toISOString().slice(0, 10);
@@ -3162,42 +3292,53 @@ function switchSchool(el, cd, name) {
   document.querySelectorAll('.topbar-school').forEach(el => el.textContent = name);
   setTimeout(async () => {
     closeModal('schoolModal');
-    await loadStats(cd);
-    await loadBooks(cd);
-    updateGuestMode(cd);
+    if (cd === 'all') {
+      await loadAllSchoolStats();
+      updateGuestMode(cd);
+    } else {
+      await loadStats(cd);
+      await loadBooks(cd);
+      updateGuestMode(cd);
+    }
   }, 300);
 }
 
 // 他校閲覧モードのUI制御
 function updateGuestMode(cd) {
   const isGuest = loginSchoolCd !== 'admin' && cd !== loginSchoolCd;
+  const isAll   = cd === 'all';
   // ホームの貸出・返却・登録ボタンを制限
   const hmLend = document.getElementById('hm-lend');
   const hmRet  = document.getElementById('hm-ret');
   const hmReg  = document.getElementById('hm-reg');
-  if (hmLend) hmLend.style.opacity = isGuest ? '0.3' : '1';
-  if (hmRet)  hmRet.style.opacity  = isGuest ? '0.3' : '1';
-  if (hmReg)  hmReg.style.opacity  = isGuest ? '0.3' : '1';
-  if (hmLend) hmLend.style.pointerEvents = isGuest ? 'none' : '';
-  if (hmRet)  hmRet.style.pointerEvents  = isGuest ? 'none' : '';
-  if (hmReg)  hmReg.style.pointerEvents  = isGuest ? 'none' : '';
+  if (hmLend) hmLend.style.opacity = (isGuest || isAll) ? '0.3' : '1';
+  if (hmRet)  hmRet.style.opacity  = (isGuest || isAll) ? '0.3' : '1';
+  if (hmReg)  hmReg.style.opacity  = (isGuest || isAll) ? '0.3' : '1';
+  if (hmLend) hmLend.style.pointerEvents = (isGuest || isAll) ? 'none' : '';
+  if (hmRet)  hmRet.style.pointerEvents  = (isGuest || isAll) ? 'none' : '';
+  if (hmReg)  hmReg.style.pointerEvents  = (isGuest || isAll) ? 'none' : '';
   // ISBNスキャン入力欄も制限
   const homeIsbn = document.getElementById('homeIsbn');
   const scanGo = document.querySelector('.scan-go');
-  if (homeIsbn) homeIsbn.disabled = isGuest;
-  if (scanGo)   scanGo.style.opacity = isGuest ? '0.3' : '1';
-  if (scanGo)   scanGo.style.pointerEvents = isGuest ? 'none' : '';
-  // 他校モードの案内バナー
+  if (homeIsbn) homeIsbn.disabled = (isGuest || isAll);
+  if (scanGo)   scanGo.style.opacity = (isGuest || isAll) ? '0.3' : '1';
+  if (scanGo)   scanGo.style.pointerEvents = (isGuest || isAll) ? 'none' : '';
+  // 統計タブ：全校比較セクション表示切り替え
+  const allSection = document.getElementById('allSchoolStatsSection');
+  if (allSection) allSection.style.display = isAll ? '' : 'none';
+  // 他校モード／町内全体モードの案内バナー
   let banner = document.getElementById('guestBanner');
-  if (isGuest) {
+  if (isGuest || isAll) {
     if (!banner) {
       banner = document.createElement('div');
       banner.id = 'guestBanner';
       banner.style.cssText = 'background:var(--blue-dim);border:1px solid var(--blue);border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:13px;color:var(--blue);';
-      banner.textContent = '👁️ 他校の蔵書を閲覧中です。貸出・登録などの操作はできません。';
       const scrollContent = document.querySelector('#screen-home .scroll-content');
       if (scrollContent) scrollContent.insertBefore(banner, scrollContent.firstChild);
     }
+    banner.textContent = isAll
+      ? '🏘️ 町内全体ビューです。貸出・登録などの操作はできません。'
+      : '👁️ 他校の蔵書を閲覧中です。貸出・登録などの操作はできません。';
   } else {
     if (banner) banner.remove();
   }
@@ -3207,10 +3348,17 @@ function updateGuestMode(cd) {
 async function loadSchoolCounts() {
   const { data } = await db.from('school_stats').select('school_cd,total_copies');
   if (!data) return;
+  let total = 0;
   data.forEach(s => {
     const el = document.getElementById('cnt-' + s.school_cd);
     if (el) el.textContent = Number(s.total_copies).toLocaleString() + '冊';
+    total += Number(s.total_copies || 0);
   });
+  const cntAll = document.getElementById('cnt-all');
+  if (cntAll) cntAll.textContent = '合計 ' + total.toLocaleString() + '冊';
+  // 管理者のみ「町内全体」カードを表示
+  const allCard = document.getElementById('allSchoolCard');
+  if (allCard) allCard.style.display = loginSchoolCd === 'admin' ? '' : 'none';
 }
 
 // ===== スキャンモード =====
