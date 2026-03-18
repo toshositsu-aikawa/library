@@ -3788,7 +3788,7 @@ async function handleInvScan() {
       ? `<span style="font-size:.8em;color:var(--text2);">${book.purchase_fiscal_year}年度購入</span>`
       : `<button onclick="openPurchaseYearModal(${book.id}, '${book.title.replace(/'/g, "\\'")}')"
            style="font-size:.8em;background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold);border-radius:8px;padding:2px 10px;cursor:pointer;">
-           📅 購入年度を入力
+           📋 登録情報を入力
          </button>`;
 
     fb.innerHTML = `<div class="feedback ok">
@@ -3844,7 +3844,7 @@ function openPurchaseYearModal(bookId, title) {
     <div class="modal-sheet" style="max-height:420px;">
       <div class="modal-handle"></div>
       <div class="modal-header">
-        <div class="modal-title">📅 購入情報を入力</div>
+        <div class="modal-title">📋 登録情報を入力</div>
         <button class="modal-close" onclick="closePurchaseYearModal()">✕</button>
       </div>
       <div class="modal-body">
