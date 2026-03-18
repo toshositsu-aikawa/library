@@ -1615,65 +1615,6 @@ html, body {
       </div>
     </div>
 
-    <!-- 言語管理 -->
-    <div class="card" style="margin-bottom:10px;">
-      <div onclick="toggleAccordion('acc-lang')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
-        <div style="font-weight:700;font-size:15px;">🌐 外国語の言語管理</div>
-        <div id="acc-lang-icon" style="color:var(--text3);font-size:18px;">›</div>
-      </div>
-      <div id="acc-lang" style="display:none;padding:0 16px 16px;">
-        <button class="btn btn-ghost" style="padding:6px 14px;font-size:.85em;margin-bottom:10px;" onclick="openAddLanguageModal()">＋ 言語を追加</button>
-        <div id="languageList"><div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div></div>
-      </div>
-    </div>
-
-    <!-- バーコード印刷 -->
-    <div class="card" style="margin-bottom:10px;">
-      <div onclick="toggleAccordion('acc-barcode')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
-        <div style="font-weight:700;font-size:15px;">🏷️ バーコード印刷</div>
-        <div id="acc-barcode-icon" style="color:var(--text3);font-size:18px;">›</div>
-      </div>
-      <div id="acc-barcode" style="display:none;padding:0 16px 16px;">
-        <div style="margin-bottom:16px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">👤 利用者カード連番印刷</div>
-          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">先頭のIDと枚数を指定して連番で印刷します。</div>
-          <div style="margin-bottom:10px;">
-            <label class="form-label">先頭のID</label>
-            <input class="form-input" type="text" id="userIdStart" placeholder="例：S25001" style="font-family:'JetBrains Mono',monospace;" oninput="updateUserCardPreview()" />
-          </div>
-          <div style="margin-bottom:10px;">
-            <label class="form-label">印刷枚数</label>
-            <input class="form-input" type="number" id="userIdCount" value="10" min="1" max="200" oninput="updateUserCardPreview()" />
-          </div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="userCardPreview">先頭のIDを入力してください</div>
-          <button onclick="printUserCardsSeq()" style="width:100%;padding:12px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;">🖨️ 利用者カードを印刷</button>
-        </div>
-          <div style="border-top:1px solid var(--border);padding-top:16px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📚 本の独自バーコード一括印刷</div>
-          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">開始番号と枚数を指定して連番バーコードを印刷します。印刷後に本に貼り、スキャンして登録してください。</div>
-
-          <!-- プレフィックス表示 -->
-          <div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-            <div style="font-size:13px;color:var(--text3);">プレフィックス：</div>
-            <div id="barcodePrefixLabel" style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--blue);">TAK</div>
-          </div>
-
-          <div class="form-row" style="margin-bottom:10px;">
-            <div class="form-group">
-              <label class="form-label">開始番号</label>
-              <input class="form-input" type="number" id="barcodeStartNum" value="1" min="1" style="font-family:'JetBrains Mono',monospace;" oninput="updateBarcodePreview()" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">印刷枚数</label>
-              <input class="form-input" type="number" id="barcodePrintCount" value="20" min="1" max="200" oninput="updateBarcodePreview()" />
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">TAK-00001 〜 TAK-00020（20枚）</div>
-          <button onclick="printBookBarcodesSeq()" style="width:100%;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ バーコードを印刷</button>
-        </div>
-      </div>
-    </div>
-
     <!-- 部屋・棚管理 -->
     <div class="card" style="margin-bottom:10px;">
       <div onclick="toggleAccordion('acc-rooms')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
@@ -1737,6 +1678,64 @@ html, body {
       </div>
     </div>
 
+    <!-- 言語管理 -->
+    <div class="card" style="margin-bottom:10px;">
+      <div onclick="toggleAccordion('acc-lang')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="font-weight:700;font-size:15px;">🌐 外国語の言語管理</div>
+        <div id="acc-lang-icon" style="color:var(--text3);font-size:18px;">›</div>
+      </div>
+      <div id="acc-lang" style="display:none;padding:0 16px 16px;">
+        <button class="btn btn-ghost" style="padding:6px 14px;font-size:.85em;margin-bottom:10px;" onclick="openAddLanguageModal()">＋ 言語を追加</button>
+        <div id="languageList"><div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div></div>
+      </div>
+    </div>
+
+    <!-- バーコード印刷 -->
+    <div class="card" style="margin-bottom:10px;">
+      <div onclick="toggleAccordion('acc-barcode')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="font-weight:700;font-size:15px;">🏷️ バーコード印刷</div>
+        <div id="acc-barcode-icon" style="color:var(--text3);font-size:18px;">›</div>
+      </div>
+      <div id="acc-barcode" style="display:none;padding:0 16px 16px;">
+        <div style="margin-bottom:16px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">👤 利用者カード連番印刷</div>
+          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">先頭のIDと枚数を指定して連番で印刷します。</div>
+          <div style="margin-bottom:10px;">
+            <label class="form-label">先頭のID</label>
+            <input class="form-input" type="text" id="userIdStart" placeholder="例：S25001" style="font-family:'JetBrains Mono',monospace;" oninput="updateUserCardPreview()" />
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="form-label">印刷枚数</label>
+            <input class="form-input" type="number" id="userIdCount" value="10" min="1" max="200" oninput="updateUserCardPreview()" />
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="userCardPreview">先頭のIDを入力してください</div>
+          <button onclick="printUserCardsSeq()" style="width:100%;padding:12px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;">🖨️ 利用者カードを印刷</button>
+        </div>
+          <div style="border-top:1px solid var(--border);padding-top:16px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📚 本の独自バーコード一括印刷</div>
+          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">開始番号と枚数を指定して連番バーコードを印刷します。印刷後に本に貼り、スキャンして登録してください。</div>
+
+          <!-- プレフィックス表示 -->
+          <div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+            <div style="font-size:13px;color:var(--text3);">プレフィックス：</div>
+            <div id="barcodePrefixLabel" style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--blue);">TAK</div>
+          </div>
+
+          <div class="form-row" style="margin-bottom:10px;">
+            <div class="form-group">
+              <label class="form-label">開始番号</label>
+              <input class="form-input" type="number" id="barcodeStartNum" value="1" min="1" style="font-family:'JetBrains Mono',monospace;" oninput="updateBarcodePreview()" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">印刷枚数</label>
+              <input class="form-input" type="number" id="barcodePrintCount" value="20" min="1" max="200" oninput="updateBarcodePreview()" />
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">TAK-00001 〜 TAK-00020（20枚）</div>
+          <button onclick="printBookBarcodesSeq()" style="width:100%;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ バーコードを印刷</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3052,13 +3051,13 @@ async function loadPopularByPeriod(schoolCd, period) {
     const counts = {};
     (popularData || []).forEach(l => {
       if (!l.books) return;
-      if (!counts[l.book_id]) counts[l.book_id] = { title: l.books.title, count: 0 };
+      if (!counts[l.book_id]) counts[l.book_id] = { id: l.book_id, title: l.books.title, count: 0 };
       counts[l.book_id].count++;
     });
     const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 10);
     popularList.innerHTML = sorted.length > 0
       ? sorted.map((b, i) => `
-        <div class="list-item" ${i > 0 ? 'style="border-top:1px solid var(--border);"' : ''}>
+        <div class="list-item" onclick="openBookDetail('${b.id}')" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
           <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i+1}</div>
           <div class="list-icon">📗</div>
           <div class="list-info">
@@ -3080,13 +3079,13 @@ async function loadPopularByPeriod(schoolCd, period) {
     const tc = {};
     (typeLendings || []).forEach(l => {
       if (!l.books) return;
-      if (!tc[l.book_id]) tc[l.book_id] = { title: l.books.title, count: 0 };
+      if (!tc[l.book_id]) tc[l.book_id] = { id: l.book_id, title: l.books.title, count: 0 };
       tc[l.book_id].count++;
     });
     const tSorted = Object.values(tc).sort((a, b) => b.count - a.count).slice(0, 10);
     rankingEl.innerHTML = tSorted.length > 0
       ? tSorted.map((b, i) => `
-        <div class="list-item" ${i > 0 ? 'style="border-top:1px solid var(--border);"' : ''}>
+        <div class="list-item" onclick="openBookDetail('${b.id}')" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
           <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${rankColors[i]};width:28px;flex-shrink:0;">${i+1}</div>
           <div class="list-icon">📗</div>
           <div class="list-info">
@@ -3265,7 +3264,7 @@ function renderPopularRanking(data, targetId, schoolCds) {
   const counts = {};
   filtered.forEach(l => {
     if (!l.books) return;
-    if (!counts[l.book_id]) counts[l.book_id] = { title: l.books.title, count: 0 };
+    if (!counts[l.book_id]) counts[l.book_id] = { id: l.book_id, title: l.books.title, count: 0 };
     counts[l.book_id].count++;
   });
   const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 10);
@@ -3275,7 +3274,7 @@ function renderPopularRanking(data, targetId, schoolCds) {
     return;
   }
   el.innerHTML = sorted.map((b, i) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
+    <div onclick="openBookDetail('${b.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
       <div style="font-family:monospace;font-size:15px;font-weight:700;color:${rankColors[i]};width:20px;flex-shrink:0;">${i+1}</div>
       <div style="font-size:12px;line-height:1.4;">
         <div style="font-weight:500;color:var(--text1);">${b.title}</div>
@@ -3298,7 +3297,7 @@ function renderCategoryPopular() {
   const counts = {};
   filtered.forEach(l => {
     if (!l.books) return;
-    if (!counts[l.book_id]) counts[l.book_id] = { title: l.books.title, count: 0 };
+    if (!counts[l.book_id]) counts[l.book_id] = { id: l.book_id, title: l.books.title, count: 0 };
     counts[l.book_id].count++;
   });
   const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 10);
@@ -3308,7 +3307,7 @@ function renderCategoryPopular() {
     return;
   }
   el.innerHTML = sorted.map((b, i) => `
-    <div class="list-item" ${i > 0 ? 'style="border-top:1px solid var(--border);"' : ''}>
+    <div class="list-item" onclick="openBookDetail('${b.id}')" style="cursor:pointer;${i > 0 ? 'border-top:1px solid var(--border);' : ''}">
       <div style="font-family:monospace;font-size:18px;font-weight:700;color:${rankColors[Math.min(i,2)]};width:28px;flex-shrink:0;">${i+1}</div>
       <div class="list-icon">📗</div>
       <div class="list-info">
