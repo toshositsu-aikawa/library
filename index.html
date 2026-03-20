@@ -2117,6 +2117,19 @@ html, body {
   </div>
 </div>
 
+<!-- 複数冊選択モーダル -->
+<div class="modal-overlay" id="multiBookModal" onclick="closeModalOutside(event,'multiBookModal')">
+  <div class="modal-sheet" style="max-height:80vh;display:flex;flex-direction:column;">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="multiBookModalTitle">📚 どの1冊ですか？</div>
+      <button class="modal-close" onclick="closeModal('multiBookModal')">✕</button>
+    </div>
+    <div style="padding:0 16px 8px;flex-shrink:0;font-size:13px;color:var(--text2);" id="multiBookModalDesc"></div>
+    <div style="flex:1;overflow-y:auto;padding:0 16px 16px;" id="multiBookList"></div>
+  </div>
+</div>
+
 <!-- 一括除籍候補モーダル -->
 <div class="modal-overlay" id="bulkWithdrawModal" onclick="closeModalOutside(event,'bulkWithdrawModal')">
   <div class="modal-sheet" style="max-height:92vh;display:flex;flex-direction:column;">
@@ -3570,15 +3583,77 @@ async function submitReturn(lendingId) {
 // ============================================================
 // ISBNで本を検索
 // ============================================================
+// 1冊検索（後方互換）
 async function findBookByISBN(isbn, schoolCd) {
+  const books = await findBooksByISBN(isbn, schoolCd);
+  return books.length > 0 ? books[0] : null;
+}
+
+// 複数冊検索
+async function findBooksByISBN(isbn, schoolCd) {
   const { data, error } = await db
     .from('books')
     .select('*')
     .eq('school_cd', schoolCd)
     .eq('isbn', isbn)
-    .single()
-  if (error) return null
-  return data
+    .neq('status', 'withdrawn')
+    .order('registration_no', { ascending: true, nullsFirst: false });
+  if (error || !data) return [];
+  return data;
+}
+
+// 複数冊選択モーダルを表示
+// mode: 'lend' | 'reg' | 'inv'
+// onSelect(book): 選択時コールバック
+// onNew(isbn, info): 「この中にない」コールバック（登録用）
+function showMultiBookModal(books, isbn, mode, onSelect, onNew = null) {
+  const title = document.getElementById('multiBookModalTitle');
+  const desc  = document.getElementById('multiBookModalDesc');
+  const list  = document.getElementById('multiBookList');
+
+  const modeLabel = mode === 'lend' ? '貸出する' : mode === 'ret' ? '返却する' : '点検済みにする';
+  title.textContent = `📚 ${books[0]?.title || ''}`;
+  desc.textContent  = `同じ本が${books.length}冊あります。${modeLabel}1冊を選んでください。`;
+
+  const rows = books.map((b, i) => {
+    const regNo = b.registration_no ? `登録番号：${b.registration_no}` : `（登録番号なし）`;
+    const statusBadge = b.status === 'lent'
+      ? '<span style="font-size:11px;background:var(--red);color:#fff;padding:2px 6px;border-radius:6px;margin-left:6px;">貸出中</span>'
+      : '<span style="font-size:11px;background:var(--green);color:#000;padding:2px 6px;border-radius:6px;margin-left:6px;">貸出可</span>';
+    return `<div class="list-item" onclick="_multiBookSelect(${i})" style="cursor:pointer;border-radius:10px;background:var(--bg3);margin-bottom:8px;border:1.5px solid transparent;" id="multiBookItem-${i}">
+      <div class="list-info">
+        <div class="list-title" style="font-family:'JetBrains Mono',monospace;">${regNo}${statusBadge}</div>
+        <div class="list-meta">${b.author || ''}　${b.publisher || ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const newBtn = onNew
+    ? `<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
+        <button class="btn btn-ghost" style="width:100%;" onclick="_multiBookNew()">➕ この中にない → 新しい登録番号で登録</button>
+      </div>`
+    : '';
+
+  list.innerHTML = rows + newBtn;
+
+  // コールバックをグローバルに保持
+  window._multiBooks   = books;
+  window._multiOnSelect = onSelect;
+  window._multiOnNew    = onNew;
+  window._multiIsbn     = isbn;
+
+  openModal('multiBookModal');
+}
+
+function _multiBookSelect(idx) {
+  const book = window._multiBooks[idx];
+  closeModal('multiBookModal');
+  if (window._multiOnSelect) window._multiOnSelect(book);
+}
+
+function _multiBookNew() {
+  closeModal('multiBookModal');
+  if (window._multiOnNew) window._multiOnNew(window._multiIsbn);
 }
 
 // ============================================================
@@ -3807,13 +3882,28 @@ async function handleHomeScan() {
       return;
     }
     // 登録モード
-    const existing = await findBookByISBN(val, currentSchoolCd);
-    if (existing) {
-      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">登録済みです</div><div class="fb-body">${existing.title}</div><div class="fb-isbn">${val}</div></div></div>`;
+    const existingBooks = await findBooksByISBN(val, currentSchoolCd);
+    const regShelfId = document.getElementById('regShelfId')?.value || null;
+    if (existingBooks.length === 1) {
+      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">登録済みです（1冊）</div><div class="fb-body">${existingBooks[0].title}</div><div class="fb-isbn">${val}</div></div></div>`;
       input.focus();
       return;
     }
-    const regShelfId = document.getElementById('regShelfId')?.value || null;
+    if (existingBooks.length > 1) {
+      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">登録済みです（${existingBooks.length}冊）</div><div class="fb-body">${existingBooks[0].title}</div></div></div>`;
+      // 「この中にない」→新規登録へ
+      showMultiBookModal(existingBooks, val, 'reg',
+        (book) => {
+          // 選択された本の詳細を開く
+          openBookDetail(book.id);
+        },
+        (isbn) => {
+          const info_cached = window._lastFetchedInfo;
+          showRegisterModal(isbn, info_cached, regShelfId);
+        }
+      );
+      return;
+    }
     // 独自バーコード（AIK-）の場合は書誌情報検索をスキップ
     if (isLocalBarcode(val)) {
       fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">🏷️</div><div><div class="fb-title">独自バーコード</div><div class="fb-isbn">${val}</div></div></div>`;
@@ -3822,17 +3912,17 @@ async function handleHomeScan() {
       // ISBN→書誌情報取得
       fb.innerHTML = `<div class="feedback" style="opacity:.6"><div class="fb-icon">🔍</div><div><div class="fb-title">書誌情報を検索中…</div><div class="fb-isbn">${val}</div></div></div>`;
       const info = await fetchBookInfo(val);
+      window._lastFetchedInfo = info;
       showRegisterModal(val, info, regShelfId);
     }
 
   } else if (scanMode === 'lend') {
     // 貸出モード
-    const book = await findBookByISBN(val, currentSchoolCd);
-    if (!book) {
+    const lendBooks = await findBooksByISBN(val, currentSchoolCd);
+    if (lendBooks.length === 0) {
       // 独自バーコードで未登録の場合は登録へ誘導
       if (isLocalBarcode(val)) {
         fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">🏷️</div><div><div class="fb-title">未登録のバーコードです</div><div class="fb-body">登録モードに切り替えて登録してください</div><div class="fb-isbn">${val}</div></div></div>`;
-        // 登録モードに切り替えてそのまま登録フォームを開く
         setScanMode('reg');
         document.querySelectorAll('.scan-mode-btn').forEach(b => b.classList.remove('active'));
         document.querySelector('[onclick="setScanMode(\'reg\')"]')?.classList.add('active');
@@ -3844,43 +3934,67 @@ async function handleHomeScan() {
       input.focus();
       return;
     }
-    fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📤</div><div><div class="fb-title">貸出処理へ</div><div class="fb-body">${book.title}</div><div class="fb-isbn">${val}</div></div></div>`;
-    // 貸出モーダルに本情報をセット
-    window._lendBookId = book.id;
-    window._lendBookTitle = book.title;
-    // 返却予定日を2週間後に自動セット
-    const due = new Date(); due.setDate(due.getDate() + 14);
-    document.getElementById('lendDueAt').value = due.toISOString().slice(0,10);
-    document.getElementById('lendUserId').value = '';
-    openModal('lendModal');
-    setTimeout(() => document.getElementById('lendUserId').focus(), 300);
+
+    // 複数冊ある場合は選択モーダル
+    const proceedLend = (book) => {
+      fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📤</div><div><div class="fb-title">貸出処理へ</div><div class="fb-body">${book.title}${book.registration_no ? '（登録番号：'+book.registration_no+'）' : ''}</div><div class="fb-isbn">${val}</div></div></div>`;
+      window._lendBookId = book.id;
+      window._lendBookTitle = book.title;
+      const due = new Date(); due.setDate(due.getDate() + 14);
+      document.getElementById('lendDueAt').value = due.toISOString().slice(0,10);
+      document.getElementById('lendUserId').value = '';
+      openModal('lendModal');
+      setTimeout(() => document.getElementById('lendUserId').focus(), 300);
+    };
+
+    if (lendBooks.length === 1) {
+      proceedLend(lendBooks[0]);
+    } else {
+      fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📚</div><div><div class="fb-title">${lendBooks.length}冊あります。どれですか？</div><div class="fb-body">${lendBooks[0].title}</div></div></div>`;
+      showMultiBookModal(lendBooks, val, 'lend', proceedLend, null);
+    }
 
   } else if (scanMode === 'ret') {
-    // 返却モード
-    const { data, error } = await db.from('lendings')
-      .select('*, books(*)')
-      .eq('school_cd', currentSchoolCd)
-      .is('returned_at', null)
-      .eq('books.isbn', val)
-      .limit(1);
-
-    if (error || !data || data.length === 0) {
-      // ISBNで直接本を探して返却
-      const book = await findBookByISBN(val, currentSchoolCd);
-      if (!book) {
-        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❓</div><div><div class="fb-title">貸出記録が見つかりません</div><div class="fb-isbn">${val}</div></div></div>`;
-      } else {
-        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">📚</div><div><div class="fb-title">貸出中ではありません</div><div class="fb-body">${book.title}</div></div></div>`;
-      }
+    // 返却モード：同ISBNの貸出中を全件取得
+    const retBooks = await findBooksByISBN(val, currentSchoolCd);
+    if (retBooks.length === 0) {
+      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❓</div><div><div class="fb-title">この本は登録されていません</div><div class="fb-isbn">${val}</div></div></div>`;
+      input.focus();
+      return;
+    }
+    const lentBooks = retBooks.filter(b => b.status === 'lent');
+    if (lentBooks.length === 0) {
+      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">📚</div><div><div class="fb-title">貸出中の本が見つかりません</div><div class="fb-body">${retBooks[0].title}</div></div></div>`;
       input.focus();
       return;
     }
 
-    const lending = data[0];
-    const ok = await submitReturn(lending.id);
-    if (ok) {
-      fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">返却しました</div><div class="fb-body">${lending.books?.title || ''}</div><div class="fb-isbn">${val}</div></div></div>`;
-      await loadStats(currentSchoolCd);
+    const proceedReturn = async (book) => {
+      // 該当本の貸出記録を取得して返却
+      const { data: lendData } = await db.from('lendings')
+        .select('id')
+        .eq('book_id', book.id)
+        .is('returned_at', null)
+        .limit(1);
+      if (!lendData || lendData.length === 0) {
+        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">📚</div><div><div class="fb-title">貸出記録が見つかりません</div><div class="fb-body">${book.title}</div></div></div>`;
+        return;
+      }
+      const ok = await submitReturn(lendData[0].id);
+      if (ok) {
+        fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">返却しました</div><div class="fb-body">${book.title}${book.registration_no ? '（登録番号：'+book.registration_no+'）' : ''}</div><div class="fb-isbn">${val}</div></div></div>`;
+        await loadStats(currentSchoolCd);
+      }
+    };
+
+    if (lentBooks.length === 1) {
+      await proceedReturn(lentBooks[0]);
+    } else {
+      fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📚</div><div><div class="fb-title">${lentBooks.length}冊貸出中。どれを返却しますか？</div><div class="fb-body">${lentBooks[0].title}</div></div></div>`;
+      showMultiBookModal(lentBooks, val, 'ret',
+        async (book) => { await proceedReturn(book); },
+        null
+      );
     }
   }
 
@@ -4314,37 +4428,46 @@ async function handleInvScan() {
 
   fb.innerHTML = `<div class="feedback" style="opacity:.6"><div class="fb-icon">⏳</div><div><div class="fb-title">確認中…</div><div class="fb-isbn">${val}</div></div></div>`;
 
-  // DBで検索
-  const book = await findBookByISBN(val, currentSchoolCd);
+  // DBで検索（複数冊対応）
+  const invBooks = await findBooksByISBN(val, currentSchoolCd);
 
-  if (book) {
+  const proceedInvScan = async (book) => {
     // 登録済み → 確認済み
+    // 2回スキャン防止：既にスキャン済みか確認
+    if (currentSessionId) {
+      const { data: already } = await db.from('inventory_scanned')
+        .select('id').eq('session_id', currentSessionId).eq('book_id', book.id).limit(1);
+      if (already && already.length > 0) {
+        const regNo = book.registration_no ? `（登録番号：${book.registration_no}）` : '';
+        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">スキャン済みです</div><div class="fb-body">${book.title}${regNo}</div></div></div>`;
+        addInvLog(t, book.title + regNo + ' ※スキャン済み', 'warn');
+        document.getElementById('invIsbn').focus();
+        return;
+      }
+    }
     invScanned++;
     if (currentSessionId) {
-      // スキャン済み記録（重複は無視）
       await db.from('inventory_scanned').upsert({
         session_id: currentSessionId,
         book_id: book.id,
         school_cd: currentSchoolCd,
       }, { onConflict: 'session_id,book_id' });
-      // セッションのカウントを更新
       await db.from('inventory_sessions')
         .update({ scanned_count: invScanned })
         .eq('id', currentSessionId);
     }
-    // 棚IDを本に紐付け（テストモードでは本番データに影響させない）
     if (currentShelfId && !invIsTestMode) {
       await db.from('books').update({ shelf_id: currentShelfId }).eq('id', book.id);
     }
     updateInvUI();
-    // 本番モードなら進捗バーも更新
     if (!invIsTestMode) updateMainSessionProgress();
 
     // 購入年度が未登録かどうかでフィードバックを変える
     const hasPurchaseYear = !!book.purchase_fiscal_year;
+    const regNoLabel = book.registration_no ? `（登録番号：${book.registration_no}）` : '';
     const yearBadge = hasPurchaseYear
       ? `<span style="font-size:.8em;color:var(--text2);">${book.purchase_fiscal_year}年度購入</span>`
-      : `<button onclick="openPurchaseYearModal(${book.id}, '${book.title.replace(/'/g, "\\'")}')"
+      : `<button onclick="openPurchaseYearModal(${book.id}, '${book.title.replace(/'/g, "\'")}')"
            style="font-size:.8em;background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold);border-radius:8px;padding:2px 10px;cursor:pointer;">
            📋 登録情報を入力
          </button>`;
@@ -4353,12 +4476,15 @@ async function handleInvScan() {
       <div class="fb-icon">✅</div>
       <div style="flex:1;">
         <div class="fb-title">確認済み</div>
-        <div class="fb-body">${book.title}</div>
+        <div class="fb-body">${book.title}${regNoLabel}</div>
         <div style="margin-top:6px;">${yearBadge}</div>
       </div>
     </div>`;
-    addInvLog(t, book.title, 'ok');
-  } else {
+    addInvLog(t, book.title + regNoLabel, 'ok');
+    document.getElementById('invIsbn').focus();
+  }; // proceedInvScan end
+
+  if (invBooks.length === 0) {
     // 未登録 → 国会図書館APIで書誌情報取得
     invIssues++;
     updateInvUI();
@@ -4370,9 +4496,16 @@ async function handleInvScan() {
     fb.innerHTML = `<div class="feedback warn" style="border-color:var(--blue);background:var(--blue-dim)"><div class="fb-icon">📚</div><div><div class="fb-title">未登録の本</div><div class="fb-body">${displayTitle}</div><div class="fb-isbn">${val}</div></div></div>`;
     addInvLog(t, `【未登録】${displayTitle}`, 'unregistered');
 
-    // 登録モーダル表示
     showRegisterModal(val, info);
-    return; // フォーカスはモーダル側で処理
+    return;
+  } else if (invBooks.length === 1) {
+    await proceedInvScan(invBooks[0]);
+  } else {
+    fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📚</div><div><div class="fb-title">${invBooks.length}冊あります。どれですか？</div><div class="fb-body">${invBooks[0].title}</div></div></div>`;
+    showMultiBookModal(invBooks, val, 'inv',
+      async (book) => { await proceedInvScan(book); },
+      null
+    );
   }
 
   input.focus();
