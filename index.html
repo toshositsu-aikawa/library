@@ -1190,7 +1190,8 @@ html, body {
     <div class="topbar-title">📖 蔵書一覧</div>
     <div class="topbar-school" id="tab-school-label">高峰小学校</div>
     <div class="topbar-right">
-      <div class="icon-btn" onclick="if(isStudentMode){return;}openModal('addBookModal')">＋</div>
+      <div class="icon-btn" id="returnToMySchoolBtn" style="display:none;font-size:12px;color:var(--blue);white-space:nowrap;" onclick="returnToMySchool()">🏠 自校</div>
+      <div class="icon-btn" onclick="if(isStudentMode){return;}openModal('addBookModal')" id="addBookBtn">＋</div>
     </div>
   </div>
 
@@ -3784,10 +3785,14 @@ function updateGuestMode(cd) {
   const tabHome     = document.getElementById('tab-home');
   const tabInv      = document.getElementById('tab-inv');
   const tabSettings = document.getElementById('tab-settings');
+  const returnBtn   = document.getElementById('returnToMySchoolBtn');
+  const addBookBtn  = document.getElementById('addBookBtn');
   if (isGuest) {
     if (tabHome)     tabHome.style.display     = 'none';
     if (tabInv)      tabInv.style.display      = 'none';
     if (tabSettings) tabSettings.style.display = 'none';
+    if (returnBtn)   returnBtn.style.display   = '';   // 「自校に戻る」表示
+    if (addBookBtn)  addBookBtn.style.display  = 'none'; // 「＋」非表示
     // 蔵書タブに自動移動
     switchTab('books');
   } else if (!isStudent) {
@@ -3795,6 +3800,8 @@ function updateGuestMode(cd) {
     if (tabHome)     tabHome.style.display     = '';
     if (tabInv)      tabInv.style.display      = '';
     if (tabSettings) tabSettings.style.display = '';
+    if (returnBtn)   returnBtn.style.display   = 'none';
+    if (addBookBtn)  addBookBtn.style.display  = '';
   }
 
   // 統計タブ：全校比較セクション表示切り替え
@@ -3819,6 +3826,25 @@ function updateGuestMode(cd) {
   } else {
     if (banner) banner.remove();
   }
+}
+
+// 他校閲覧から自校に戻る
+async function returnToMySchool() {
+  if (!loginSchoolCd || loginSchoolCd === 'admin') return;
+  const SCHOOL_NAMES = {
+    '50301':'高峰小学校','50302':'半原小学校','50303':'中津第２小学校',
+    '50304':'菅原小学校','50305':'中津小学校','50306':'田代小学校',
+    '50401':'愛川中学校','50402':'愛川東中学校','50403':'愛川中原中学校'
+  };
+  const name = SCHOOL_NAMES[loginSchoolCd] || loginSchoolCd;
+  currentSchoolCd = loginSchoolCd;
+  document.querySelectorAll('.topbar-school').forEach(el => el.textContent = name);
+  // 学校モーダルの選択状態を自校に戻す
+  document.querySelectorAll('#schoolModal .school-card').forEach(c => c.classList.remove('selected'));
+  await loadStats(loginSchoolCd);
+  await loadBooks(loginSchoolCd);
+  updateGuestMode(loginSchoolCd);
+  switchTab('home');
 }
 
 // 学校モーダルを開くときに冊数を読み込む
