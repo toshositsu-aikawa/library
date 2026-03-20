@@ -3689,27 +3689,45 @@ function switchSchool(el, cd, name) {
 function updateGuestMode(cd) {
   const isGuest   = loginSchoolCd !== 'admin' && cd !== loginSchoolCd;
   const isAll     = cd === 'all';
-  const isStudent = isStudentMode; // 図書委員モード
+  const isStudent = isStudentMode;
+
   // ホームの貸出・返却・登録ボタン
   const hmLend = document.getElementById('hm-lend');
   const hmRet  = document.getElementById('hm-ret');
   const hmReg  = document.getElementById('hm-reg');
-  if (hmLend) hmLend.style.opacity = (isGuest || isAll) ? '0.3' : '1';
-  // 図書委員：貸出・返却は可、登録は不可
   if (hmLend) { hmLend.style.opacity = (isGuest || isAll) ? '0.3' : '1'; hmLend.style.pointerEvents = (isGuest || isAll) ? 'none' : ''; }
   if (hmRet)  { hmRet.style.opacity  = (isGuest || isAll) ? '0.3' : '1'; hmRet.style.pointerEvents  = (isGuest || isAll) ? 'none' : ''; }
-  if (hmReg)  { hmReg.style.opacity  = (isGuest || isAll || isStudent) ? '0.3' : '1'; hmReg.style.pointerEvents  = (isGuest || isAll || isStudent) ? 'none' : ''; }
+  if (hmReg)  { hmReg.style.opacity  = (isGuest || isAll || isStudent) ? '0.3' : '1'; hmReg.style.pointerEvents = (isGuest || isAll || isStudent) ? 'none' : ''; }
+
   // ISBNスキャン（図書委員は使用可）
   const homeIsbn = document.getElementById('homeIsbn');
   const scanGo = document.querySelector('.scan-go');
   if (homeIsbn) homeIsbn.disabled = (isGuest || isAll);
-  if (scanGo)   scanGo.style.opacity = (isGuest || isAll) ? '0.3' : '1';
-  if (scanGo)   scanGo.style.pointerEvents = (isGuest || isAll) ? 'none' : '';
+  if (scanGo)   { scanGo.style.opacity = (isGuest || isAll) ? '0.3' : '1'; scanGo.style.pointerEvents = (isGuest || isAll) ? 'none' : ''; }
+
+  // 他校閲覧時：蔵書・統計タブのみ表示、ホーム・点検・設定は非表示
+  const tabHome     = document.getElementById('tab-home');
+  const tabInv      = document.getElementById('tab-inv');
+  const tabSettings = document.getElementById('tab-settings');
+  if (isGuest) {
+    if (tabHome)     tabHome.style.display     = 'none';
+    if (tabInv)      tabInv.style.display      = 'none';
+    if (tabSettings) tabSettings.style.display = 'none';
+    // 蔵書タブに自動移動
+    switchTab('books');
+  } else if (!isStudent) {
+    // 自校 or 管理者 or 町内全体：全タブ表示（図書委員モードは別途制御）
+    if (tabHome)     tabHome.style.display     = '';
+    if (tabInv)      tabInv.style.display      = '';
+    if (tabSettings) tabSettings.style.display = '';
+  }
+
   // 統計タブ：全校比較セクション表示切り替え
   const allSection    = document.getElementById('allSchoolStatsSection');
   const singleSection = document.getElementById('singleSchoolStatsSection');
   if (allSection)    allSection.style.display    = isAll ? '' : 'none';
   if (singleSection) singleSection.style.display = isAll ? 'none' : '';
+
   // 他校モード／町内全体モードの案内バナー
   let banner = document.getElementById('guestBanner');
   if (isGuest || isAll) {
@@ -3722,7 +3740,7 @@ function updateGuestMode(cd) {
     }
     banner.textContent = isAll
       ? '🏘️ 町内全体ビューです。貸出・登録などの操作はできません。'
-      : '👁️ 他校の蔵書を閲覧中です。貸出・登録などの操作はできません。';
+      : '👁️ 他校の蔵書・統計を閲覧中です。';
   } else {
     if (banner) banner.remove();
   }
