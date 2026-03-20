@@ -1066,6 +1066,18 @@ html, body {
       <h1>愛川町学校図書館管理システム</h1>
     </div>
 
+    <!-- バーコードスキャンログイン -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;color:#888;margin-bottom:8px;text-align:center;">🔑 ログインバーコードをスキャン</div>
+      <input type="text" id="loginBarcodeInput"
+        placeholder="バーコードをスキャン…"
+        autocomplete="off"
+        style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #3a3f5c;background:#1e2235;color:#dde1ee;font-size:14px;box-sizing:border-box;text-align:center;"
+        oninput="handleLoginBarcodeScan(this.value)" />
+    </div>
+
+    <div style="font-size:12px;color:#555;margin-bottom:16px;text-align:center;">────── または手動ログイン ──────</div>
+
     <!-- モード切り替えタブ -->
     <div style="display:flex;gap:0;margin-bottom:20px;border-radius:10px;overflow:hidden;border:1.5px solid #3a3f5c;">
       <button id="loginTabTeacher" onclick="switchLoginTab('teacher')"
@@ -1760,6 +1772,21 @@ html, body {
           <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">TAK-00001 〜 TAK-00020（20枚）</div>
           <button onclick="printBookBarcodesSeq()" style="width:100%;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ バーコードを印刷</button>
         </div>
+
+        <!-- ログイン用バーコード -->
+        <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">🔑 ログイン用バーコード発行</div>
+          <div style="font-size:13px;color:var(--text3);margin-bottom:14px;">印刷したバーコードをスキャンするだけでログインできます。</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button onclick="printLoginBarcode('teacher')" style="padding:12px 8px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;font-size:13px;">
+              🖨️ 先生用<br><span style="font-size:11px;font-weight:400;">ログインバーコード</span>
+            </button>
+            <button onclick="printLoginBarcode('student')" style="padding:12px 8px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;font-size:13px;">
+              🖨️ 図書委員用<br><span style="font-size:11px;font-weight:400;">ログインバーコード</span>
+            </button>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:10px;">※ パスワードを変更した場合は再発行が必要です</div>
+        </div>
       </div>
     </div>
   </div>
@@ -2388,6 +2415,180 @@ function setTheme(theme) {
   setTheme(saved)
 })()
 
+// ===== ログインバーコード処理 =====
+
+// バーコードトークンを生成（学校コード+種別+シークレット）
+async function generateLoginToken(schoolCd, type, secret) {
+  const raw = `${type}-${schoolCd}-${secret}`;
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+  const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  return `${type.toUpperCase()}-${schoolCd}-${hashHex.slice(0, 16)}`;
+}
+
+// ログイン画面でバーコードをスキャンしたとき
+async function handleLoginBarcodeScan(val) {
+  if (!val || val.length < 10) return;
+  const input = document.getElementById('loginBarcodeInput');
+  const errEl = document.getElementById('loginError');
+
+  // TEACHER-XXXXX-XXXXXXXXXXXXXXXX 形式チェック
+  const teacherMatch = val.match(/^TEACHER-(\d{5})-([0-9a-f]{16})$/);
+  const studentMatch = val.match(/^STUDENT-(\d{5})-([0-9a-f]{16})$/);
+
+  if (!teacherMatch && !studentMatch) return; // まだ入力中
+
+  input.value = '';
+  errEl.textContent = '';
+
+  const schoolCd = (teacherMatch || studentMatch)[1];
+  const token    = (teacherMatch || studentMatch)[2];
+
+  // Supabaseで照合
+  const tokenField = teacherMatch ? 'teacher_token' : 'student_token';
+  const { data, error } = await db.from('student_passwords')
+    .select('school_cd, teacher_token, password_hash')
+    .eq('school_cd', schoolCd)
+    .single();
+
+  if (error || !data) {
+    errEl.textContent = '無効なバーコードです';
+    return;
+  }
+
+  if (teacherMatch) {
+    // 先生用：teacher_tokenと照合
+    if (!data.teacher_token || !data.teacher_token.includes(token)) {
+      errEl.textContent = '無効なバーコードです';
+      return;
+    }
+    // 学校アカウントのメール・パスワードを取得してログイン
+    const SCHOOL_EMAILS = {
+      '50301':'takamine@aikawa-lib.jp','50302':'hanbara@aikawa-lib.jp',
+      '50303':'nakatsudai2@aikawa-lib.jp','50304':'sugawara@aikawa-lib.jp',
+      '50305':'nakatsu@aikawa-lib.jp','50306':'tashiro@aikawa-lib.jp',
+      '50401':'aikawa@aikawa-lib.jp','50402':'higashi@aikawa-lib.jp',
+      '50403':'nakahara@aikawa-lib.jp'
+    };
+    const SCHOOL_PWS = {
+      '50301':'Takamine2026!','50302':'Hanbara2026!','50303':'Nakatsudai2026!',
+      '50304':'Sugawara2026!','50305':'Nakatsu2026!','50306':'Tashiro2026!',
+      '50401':'Aikawa2026!','50402':'Higashi2026!','50403':'Nakahara2026!'
+    };
+    const email = SCHOOL_EMAILS[schoolCd];
+    const pw    = SCHOOL_PWS[schoolCd];
+    if (!email || !pw) { errEl.textContent = '学校情報が見つかりません'; return; }
+
+    const { error: loginErr } = await db.auth.signInWithPassword({ email, password: pw });
+    if (loginErr) { errEl.textContent = 'ログインに失敗しました'; return; }
+    // doLogin後の処理はonAuthStateChangeで処理される
+
+  } else {
+    // 図書委員用：student_tokenと照合（password_hashを流用してトークン確認）
+    // student_tokenはpassword_hashから生成したものをSupabaseに保存
+    const { data: stData } = await db.from('student_passwords')
+      .select('school_cd')
+      .eq('school_cd', schoolCd)
+      .filter('student_token', 'ilike', `%${token}%`)
+      .single();
+
+    // student_tokenがなければpassword_hashから再生成して比較
+    const expectedToken = await generateLoginToken(schoolCd, 'student', data.password_hash.slice(0, 16));
+    if (!val.endsWith(expectedToken.split('-').pop())) {
+      errEl.textContent = '無効なバーコードです';
+      return;
+    }
+
+    // 図書委員ログイン処理（doStudentLoginと同じ）
+    document.getElementById('studentSchoolCd').value = schoolCd;
+    // password_hashが一致するか確認済みなので直接ログイン
+    const SCHOOL_NAMES = {
+      '50301':'高峰小学校','50302':'半原小学校','50303':'中津第２小学校',
+      '50304':'菅原小学校','50305':'中津小学校','50306':'田代小学校',
+      '50401':'愛川中学校','50402':'愛川東中学校','50403':'愛川中原中学校'
+    };
+    const schoolName = SCHOOL_NAMES[schoolCd] || schoolCd;
+    isStudentMode = true;
+    loginSchoolCd = schoolCd;
+    currentSchoolCd = schoolCd;
+    document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+    document.getElementById('loginScreen').classList.add('hidden');
+    showStudentBanner(schoolName);
+    applyStudentModeUI();
+    await loadStats(schoolCd);
+    await loadBooks(schoolCd);
+  }
+}
+
+// ログイン用バーコードを印刷
+async function printLoginBarcode(type) {
+  const schoolCd = loginSchoolCd === 'admin' ? currentSchoolCd : loginSchoolCd;
+  if (!schoolCd || schoolCd === 'admin') {
+    alert('学校を選択した状態で実行してください');
+    return;
+  }
+
+  // Supabaseからトークン素材を取得
+  const { data, error } = await db.from('student_passwords')
+    .select('school_cd, password_hash, teacher_token')
+    .eq('school_cd', schoolCd)
+    .single();
+
+  if (error || !data) { alert('データを取得できませんでした'); return; }
+
+  let barcodeValue;
+  if (type === 'teacher') {
+    // teacher_tokenがなければ生成してDBに保存
+    if (!data.teacher_token) {
+      const token = await generateLoginToken(schoolCd, 'teacher', data.password_hash.slice(0, 16));
+      await db.from('student_passwords').update({ teacher_token: token }).eq('school_cd', schoolCd);
+      barcodeValue = token;
+    } else {
+      barcodeValue = data.teacher_token;
+    }
+  } else {
+    barcodeValue = await generateLoginToken(schoolCd, 'student', data.password_hash.slice(0, 16));
+  }
+
+  const SCHOOL_NAMES = {
+    '50301':'高峰小学校','50302':'半原小学校','50303':'中津第２小学校',
+    '50304':'菅原小学校','50305':'中津小学校','50306':'田代小学校',
+    '50401':'愛川中学校','50402':'愛川東中学校','50403':'愛川中原中学校'
+  };
+  const schoolName = SCHOOL_NAMES[schoolCd] || schoolCd;
+  const typeLabel  = type === 'teacher' ? '先生用ログインバーコード' : '図書委員用ログインバーコード';
+  const bgColor    = type === 'teacher' ? '#dbeafe' : '#d1fae5';
+  const labelColor = type === 'teacher' ? '#1e40af' : '#065f46';
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>${typeLabel}</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+    <style>
+      body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5;}
+      .card{background:${bgColor};border:2px solid ${labelColor};border-radius:16px;padding:24px 32px;text-align:center;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+      h2{color:${labelColor};margin:0 0 4px;font-size:16px;}
+      p{color:#555;margin:0 0 16px;font-size:13px;}
+      svg{max-width:100%;}
+      .hint{font-size:11px;color:#888;margin-top:12px;}
+    </style>
+  </head><body>
+    <div class="card">
+      <h2>📚 ${schoolName}</h2>
+      <p>${typeLabel}</p>
+      <svg id="barcode"></svg>
+      <div class="hint">このバーコードをスキャンしてログイン</div>
+    </div>
+    <script>
+      JsBarcode('#barcode', '${barcodeValue}', {
+        format: 'CODE128', width: 2, height: 80,
+        displayValue: false, margin: 10
+      });
+      setTimeout(() => window.print(), 800);
+    <\/script>
+  </body></html>`);
+  win.document.close();
+}
+
 // ===== ログインタブ切り替え =====
 function switchLoginTab(tab) {
   const isTeacher = tab === 'teacher';
@@ -2562,6 +2763,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('studentSchoolCd')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('studentPassword')?.focus();
   });
+  // ログイン画面ではバーコード入力欄に自動フォーカス
+  document.getElementById('loginBarcodeInput')?.focus();
   updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
 
   // 本の詳細遷移：イベントデリゲーション（book-detail-triggerクラス）
@@ -3692,6 +3895,7 @@ async function doLogout() {
   document.getElementById('studentBanner')?.remove();
   document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '');
   isStudentMode = false;
+  setTimeout(() => document.getElementById('loginBarcodeInput')?.focus(), 100);
 }
 
 // バックアップ日をメモリで管理
