@@ -1190,7 +1190,7 @@ html, body {
     <div class="topbar-title">📖 蔵書一覧</div>
     <div class="topbar-school" id="tab-school-label">高峰小学校</div>
     <div class="topbar-right">
-      <div class="icon-btn" onclick="openModal('addBookModal')">＋</div>
+      <div class="icon-btn" onclick="if(isStudentMode){return;}openModal('addBookModal')">＋</div>
     </div>
   </div>
 
@@ -3748,6 +3748,8 @@ async function loadSchoolCounts() {
 // ===== スキャンモード =====
 let scanMode = 'lend';
 function setScanMode(mode) {
+  // 図書委員モードは登録不可
+  if (isStudentMode && mode === 'reg') return;
   scanMode = mode;
   ['lend','ret','reg'].forEach(m => {
     const btn = document.getElementById('hm-' + m);
@@ -3780,6 +3782,12 @@ async function handleHomeScan() {
   fb.innerHTML = `<div class="feedback" style="opacity:.6"><div class="fb-icon">⏳</div><div><div class="fb-title">確認中…</div><div class="fb-isbn">${val}</div></div></div>`;
 
   if (scanMode === 'reg') {
+    // 図書委員モードは登録不可
+    if (isStudentMode) {
+      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">🚫</div><div><div class="fb-title">図書委員モードでは登録できません</div></div></div>`;
+      input.focus();
+      return;
+    }
     // 登録モード
     const existing = await findBookByISBN(val, currentSchoolCd);
     if (existing) {
