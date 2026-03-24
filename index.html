@@ -3893,7 +3893,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function doLogout() {
   if (!confirm('ログアウトしますか？')) return;
-  await db.auth.signOut();
+  try { await db.auth.signOut(); } catch(e) {}
+  // 強制的に画面リセット
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPassword').value = '';
@@ -3901,19 +3902,20 @@ async function doLogout() {
   document.getElementById('loginBtn').disabled = false;
   document.getElementById('loginBtn').textContent = 'ログイン';
   switchLoginTab('teacher');
-  // 手動ログインエリアを折りたたむ
   const manualArea = document.getElementById('manualLoginArea');
   const manualIcon = document.getElementById('manualLoginToggleIcon');
   if (manualArea) manualArea.style.display = 'none';
   if (manualIcon) manualIcon.textContent = '›';
-  // タブを全部元に戻す（図書委員モードで隠されていた場合に備えて）
   ['tab-stats','tab-inv','tab-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = '';
   });
   document.getElementById('studentBanner')?.remove();
+  document.getElementById('guestBanner')?.remove();
   document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '');
   isStudentMode = false;
+  loginSchoolCd = null;
+  currentSchoolCd = null;
   setTimeout(() => document.getElementById('loginBarcodeInput')?.focus(), 100);
 }
 
