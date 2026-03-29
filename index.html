@@ -2795,20 +2795,99 @@ db.auth.onAuthStateChange(async (event, session) => {
       if (role === 'admin') {
         currentSchoolCd = '50301';
         document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
-        // 管理者：町内全体カードを表示
         const allCard = document.getElementById('allSchoolCard');
         if (allCard) allCard.style.display = '';
       } else {
         currentSchoolCd = schoolCd;
         document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
       }
-      // ログイン画面を閉じてデータ読み込み
       document.getElementById('loginScreen').classList.add('hidden');
+      // ネットワーク回復時のバナーを消す
+      document.getElementById('networkErrorBanner')?.remove();
       await loadStats(currentSchoolCd);
       await loadBooks(currentSchoolCd);
       updateGuestMode(currentSchoolCd);
     }
   }
+});
+
+// ============================================================
+// ネットワーク監視・自動リカバリー
+// ============================================================
+let _networkRetryTimer = null;
+
+function showNetworkErrorBanner() {
+  if (document.getElementById('networkErrorBanner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'networkErrorBanner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#dc2626;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700;';
+  banner.innerHTML = `
+    <span>📡 ネットワーク接続が切れました。再接続中…</span>
+    <button onclick="manualReconnect()" style="background:rgba(255,255,255,0.2);border:none;border-radius:8px;padding:6px 12px;color:#fff;font-weight:700;cursor:pointer;font-size:12px;">🔄 今すぐ再接続</button>
+  `;
+  document.body.prepend(banner);
+  document.querySelectorAll('.screen').forEach(s => {
+    const pt = parseInt(s.style.paddingTop || 0);
+    s.style.paddingTop = (pt + 44) + 'px';
+    s.dataset.networkPadding = '44';
+  });
+}
+
+function hideNetworkErrorBanner() {
+  const banner = document.getElementById('networkErrorBanner');
+  if (!banner) return;
+  banner.remove();
+  document.querySelectorAll('.screen').forEach(s => {
+    if (s.dataset.networkPadding) {
+      const pt = parseInt(s.style.paddingTop || 0);
+      s.style.paddingTop = Math.max(0, pt - 44) + 'px';
+      delete s.dataset.networkPadding;
+    }
+  });
+}
+
+async function manualReconnect() {
+  const banner = document.getElementById('networkErrorBanner');
+  if (banner) banner.querySelector('span').textContent = '📡 再接続中…';
+  try {
+    const { data } = await db.auth.refreshSession();
+    if (data?.session) {
+      hideNetworkErrorBanner();
+      if (currentSchoolCd) {
+        await loadStats(currentSchoolCd);
+        await loadBooks(currentSchoolCd);
+      }
+    } else {
+      if (banner) banner.querySelector('span').textContent = '📡 再接続できませんでした。もう一度お試しください。';
+    }
+  } catch(e) {
+    if (banner) banner.querySelector('span').textContent = '📡 再接続できませんでした。もう一度お試しください。';
+  }
+}
+
+// オンライン・オフライン検知
+window.addEventListener('offline', () => {
+  if (loginSchoolCd) showNetworkErrorBanner();
+});
+
+window.addEventListener('online', async () => {
+  if (!loginSchoolCd) return;
+  // ネットワーク回復時に自動リフレッシュ
+  clearTimeout(_networkRetryTimer);
+  _networkRetryTimer = setTimeout(async () => {
+    try {
+      const { data } = await db.auth.refreshSession();
+      if (data?.session) {
+        hideNetworkErrorBanner();
+        await loadStats(currentSchoolCd);
+        await loadBooks(currentSchoolCd);
+      } else {
+        showNetworkErrorBanner();
+      }
+    } catch(e) {
+      showNetworkErrorBanner();
+    }
+  }, 1500); // 1.5秒待ってから再接続（安定するまで待つ）
 });
 
 // ============================================================
