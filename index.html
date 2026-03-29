@@ -2439,7 +2439,8 @@ async function generateLoginToken(schoolCd, type, secret) {
   const raw = `${type}-${schoolCd}-${secret}`;
   const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
   const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
-  return `${type.toUpperCase()}-${schoolCd}-${hashHex.slice(0, 16)}`;
+  const prefix = type === 'teacher' ? 'T' : 'S';
+  return `${prefix}${schoolCd}${hashHex.slice(0, 8).toUpperCase()}`;
 }
 
 // ログイン画面でバーコードをスキャンしたとき
@@ -2448,9 +2449,9 @@ async function handleLoginBarcodeScan(val) {
   const input = document.getElementById('loginBarcodeInput');
   const errEl = document.getElementById('loginError');
 
-  // TEACHER-XXXXX-XXXXXXXXXXXXXXXX 形式チェック
-  const teacherMatch = val.match(/^TEACHER-(\d{5})-([0-9a-f]{16})$/);
-  const studentMatch = val.match(/^STUDENT-(\d{5})-([0-9a-f]{16})$/);
+  // T50302XXXXXXXX / S50302XXXXXXXX 形式チェック
+  const teacherMatch = val.match(/^T(\d{5})([0-9A-Fa-f]{8})$/);
+  const studentMatch = val.match(/^S(\d{5})([0-9A-Fa-f]{8})$/);
 
   if (!teacherMatch && !studentMatch) return; // まだ入力中
 
@@ -2458,7 +2459,7 @@ async function handleLoginBarcodeScan(val) {
   errEl.textContent = '';
 
   const schoolCd = (teacherMatch || studentMatch)[1];
-  const token    = (teacherMatch || studentMatch)[2];
+  const token    = (teacherMatch || studentMatch)[2].toUpperCase();
 
   // Supabaseで照合
   const tokenField = teacherMatch ? 'teacher_token' : 'student_token'; // 参照用
@@ -2499,9 +2500,27 @@ async function handleLoginBarcodeScan(val) {
     const email = SCHOOL_EMAILS[schoolCd];
     const pw    = SCHOOL_PWS[schoolCd];
     if (!email || !pw) { errEl.textContent = '学校情報が見つかりません'; return; }
-    // Supabase Authログイン → onAuthStateChangeで画面遷移
-    const { error: loginErr } = await db.auth.signInWithPassword({ email, password: pw });
+
+    const { data: loginData, error: loginErr } = await db.auth.signInWithPassword({ email, password: pw });
     if (loginErr) { errEl.textContent = 'ログインに失敗しました'; return; }
+
+    const schoolName = SCHOOL_NAMES[schoolCd] || schoolCd;
+    const role = loginData.user?.user_metadata?.role;
+    loginSchoolCd = schoolCd;
+    if (role === 'admin') {
+      currentSchoolCd = '50301';
+      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
+    } else {
+      currentSchoolCd = schoolCd;
+      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+    }
+    // ログイン情報を保存（自動ログイン用）
+    localStorage.setItem('lib_email', email);
+    localStorage.setItem('lib_password', pw);
+    document.getElementById('loginScreen').classList.add('hidden');
+    await loadStats(currentSchoolCd);
+    await loadBooks(currentSchoolCd);
+    updateGuestMode(currentSchoolCd);
 
   } else {
     // 図書委員用：password_hashから生成したトークンと照合
@@ -2569,7 +2588,7 @@ async function printLoginBarcode(type) {
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
     <style>
       body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5;}
-      .card{background:${bgColor};border:2px solid ${labelColor};border-radius:16px;padding:24px 32px;text-align:center;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+      .card{background:${bgColor};border:2px solid ${labelColor};border-radius:16px;padding:24px 32px;text-align:center;max-width:420px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
       h2{color:${labelColor};margin:0 0 4px;font-size:16px;}
       p{color:#555;margin:0 0 16px;font-size:13px;}
       svg{max-width:100%;}
@@ -2584,8 +2603,8 @@ async function printLoginBarcode(type) {
     </div>
     <script>
       JsBarcode('#barcode', '${barcodeValue}', {
-        format: 'CODE128', width: 2, height: 80,
-        displayValue: false, margin: 10
+        format: 'CODE128', width: 3, height: 100,
+        displayValue: true, margin: 15, fontSize: 14
       });
       setTimeout(() => window.print(), 800);
     <\/script>
