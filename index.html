@@ -3968,6 +3968,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       }, 400)
     })
   }
+
+  // 起動時にセッションを明示的に確認（onAuthStateChangeが発火しない場合の保険）
+  setTimeout(async () => {
+    // すでにログイン済みなら何もしない
+    if (loginSchoolCd) return;
+    try {
+      const { data } = await db.auth.getSession();
+      if (data?.session?.user) {
+        const schoolCd   = data.session.user.user_metadata?.school_cd;
+        const schoolName = data.session.user.user_metadata?.school_name;
+        const role       = data.session.user.user_metadata?.role;
+        if (schoolCd) {
+          loginSchoolCd = schoolCd;
+          if (role === 'admin') {
+            currentSchoolCd = '50301';
+            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
+            const allCard = document.getElementById('allSchoolCard');
+            if (allCard) allCard.style.display = '';
+          } else {
+            currentSchoolCd = schoolCd;
+            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+          }
+          document.getElementById('loginScreen').classList.add('hidden');
+          await loadStats(currentSchoolCd);
+          await loadBooks(currentSchoolCd);
+          updateGuestMode(currentSchoolCd);
+        }
+      }
+    } catch(e) {}
+  }, 2000); // 2秒後に確認（onAuthStateChangeが先に発火する余裕を持たせる）
 })
 
 async function doLogout() {
