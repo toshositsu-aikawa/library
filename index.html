@@ -2366,16 +2366,24 @@ html, body {
 <script>
 // ============================================================
 // Supabase 接続設定
-// ここを自分のプロジェクトの情報に書き換えてください
 // ============================================================
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
 
+// 起動時に古いセッションキーをクリア（フリーズ防止）
+;(function() {
+  try {
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('sb-')) localStorage.removeItem(k);
+    });
+  } catch(e) {}
+})();
+
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
     detectSessionInUrl: false,
-    persistSession: true,
-    autoRefreshToken: true,
+    persistSession: false,
+    autoRefreshToken: false,
   }
 })
 
@@ -2683,6 +2691,7 @@ function exitStudentMode() {
   isStudentMode = false;
   loginSchoolCd = null;
   currentSchoolCd = null;
+  localStorage.removeItem('lib_student_cd');
 
   document.getElementById('studentBanner')?.remove();
   document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '');
@@ -2722,7 +2731,6 @@ async function doLogin() {
   if (schoolCd) {
     loginSchoolCd = schoolCd;
     if (role === 'admin') {
-      // 管理者は最初の学校（高峰小）から開始
       currentSchoolCd = '50301';
       document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
     } else {
@@ -2730,11 +2738,15 @@ async function doLogin() {
       document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
     }
     document.getElementById('tab-school-label') && (document.getElementById('tab-school-label').textContent = schoolName);
+    // ログイン情報を独自に保存（次回起動時の自動ログイン用）
+    localStorage.setItem('lib_email', email);
+    localStorage.setItem('lib_password', password);
   }
 
   document.getElementById('loginScreen').classList.add('hidden');
   await loadStats(currentSchoolCd);
   await loadBooks(currentSchoolCd);
+  updateGuestMode(currentSchoolCd);
 }
 
 // Enterキーでログイン
@@ -4007,40 +4019,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  // 起動時にセッションを明示的に確認（onAuthStateChangeが発火しない場合の保険）
-  setTimeout(async () => {
-    // すでにログイン済みなら何もしない
-    if (loginSchoolCd) return;
-    try {
-      const { data } = await db.auth.getSession();
-      if (data?.session?.user) {
-        const schoolCd   = data.session.user.user_metadata?.school_cd;
-        const schoolName = data.session.user.user_metadata?.school_name;
-        const role       = data.session.user.user_metadata?.role;
-        if (schoolCd) {
-          loginSchoolCd = schoolCd;
-          if (role === 'admin') {
-            currentSchoolCd = '50301';
-            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
-            const allCard = document.getElementById('allSchoolCard');
-            if (allCard) allCard.style.display = '';
-          } else {
-            currentSchoolCd = schoolCd;
-            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
-          }
-          document.getElementById('loginScreen').classList.add('hidden');
-          await loadStats(currentSchoolCd);
-          await loadBooks(currentSchoolCd);
-          updateGuestMode(currentSchoolCd);
+  // 起動時：保存済みのログイン情報で自動ログイン
+  const savedEmail    = localStorage.getItem('lib_email');
+  const savedPassword = localStorage.getItem('lib_password');
+  if (savedEmail && savedPassword) {
+    const { data, error } = await db.auth.signInWithPassword({ email: savedEmail, password: savedPassword });
+    if (!error && data?.user) {
+      const schoolCd   = data.user.user_metadata?.school_cd;
+      const schoolName = data.user.user_metadata?.school_name;
+      const role       = data.user.user_metadata?.role;
+      if (schoolCd) {
+        loginSchoolCd = schoolCd;
+        if (role === 'admin') {
+          currentSchoolCd = '50301';
+          document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
+          const allCard = document.getElementById('allSchoolCard');
+          if (allCard) allCard.style.display = '';
+        } else {
+          currentSchoolCd = schoolCd;
+          document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
         }
+        document.getElementById('loginScreen').classList.add('hidden');
+        await loadStats(currentSchoolCd);
+        await loadBooks(currentSchoolCd);
+        updateGuestMode(currentSchoolCd);
       }
-    } catch(e) {}
-  }, 2000); // 2秒後に確認（onAuthStateChangeが先に発火する余裕を持たせる）
+    } else {
+      // 自動ログイン失敗時は保存情報を削除
+      localStorage.removeItem('lib_email');
+      localStorage.removeItem('lib_password');
+    }
+  }
 })
 
 async function doLogout() {
   if (!confirm('ログアウトしますか？')) return;
   try { await db.auth.signOut(); } catch(e) {}
+  // 保存済みログイン情報を削除
+  localStorage.removeItem('lib_email');
+  localStorage.removeItem('lib_password');
   // 強制的に画面リセット
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loginEmail').value = '';
