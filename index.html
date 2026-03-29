@@ -5150,7 +5150,7 @@ async function openBookDetail(bookId) {
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">場所</div>
         <div style="font-size:14px;font-weight:500;">${locationText}</div>
       </div>
-      ${data.category === '外国語' || category === '外国語の本' && data.language ? `
+      ${data.category === '外国語' || data.category === '外国語の本' && data.language ? `
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">言語</div>
         <div style="font-size:14px;font-weight:500;">🌐 ${data.language}</div>
