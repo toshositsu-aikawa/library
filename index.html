@@ -2986,7 +2986,18 @@ async function renderBooksPage(schoolCd) {
 
   const { data, error, count } = await query;
 
-  if (error) { console.error('蔵書取得エラー:', error); return; }
+  if (error) {
+    console.error('蔵書取得エラー:', error);
+    // エラー時は2秒後にリトライ（1回だけ）
+    if (!renderBooksPage._retrying) {
+      renderBooksPage._retrying = true;
+      setTimeout(async () => {
+        renderBooksPage._retrying = false;
+        await renderBooksPage(schoolCd);
+      }, 2000);
+    }
+    return;
+  }
 
   if (!data || data.length === 0) {
     list.innerHTML = `<div style="text-align:center;color:var(--text3);padding:32px;">
@@ -3731,14 +3742,20 @@ async function loadStatsPage(schoolCd) {
 // ============================================================
 // 学校統計の読み込み
 // ============================================================
-async function loadStats(schoolCd) {
+async function loadStats(schoolCd, retryCount = 0) {
   const { data, error } = await db
     .from('school_stats')
     .select('*')
     .eq('school_cd', schoolCd)
     .single()
 
-  if (error || !data) return
+  if (error || !data) {
+    // エラー時は最大3回リトライ
+    if (retryCount < 3) {
+      setTimeout(() => loadStats(schoolCd, retryCount + 1), 2000 * (retryCount + 1));
+    }
+    return;
+  }
 
   const el = id => document.getElementById(id)
   if (el('statTitles'))  el('statTitles').textContent  = Number(data.total_titles || 0).toLocaleString()
