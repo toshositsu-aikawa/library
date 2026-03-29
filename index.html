@@ -2774,6 +2774,27 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('loginBarcodeInput')?.focus();
   updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
 
+  // 起動時セッションチェック：5秒以内に完了しない場合は強制クリアして再読み込み
+  let _sessionResolved = false;
+  const _sessionTimeout = setTimeout(async () => {
+    if (_sessionResolved) return;
+    console.warn('セッション取得タイムアウト：Cookieをクリアして再読み込みします');
+    try { await db.auth.signOut(); } catch(e) {}
+    // localStorageのSupabase関連データをクリア
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('sb-')) localStorage.removeItem(k);
+    });
+    window.location.reload();
+  }, 5000);
+
+  db.auth.getSession().then(() => {
+    _sessionResolved = true;
+    clearTimeout(_sessionTimeout);
+  }).catch(() => {
+    _sessionResolved = true;
+    clearTimeout(_sessionTimeout);
+  });
+
   // 本の詳細遷移：イベントデリゲーション（book-detail-triggerクラス）
   document.addEventListener('click', e => {
     const trigger = e.target.closest('.book-detail-trigger');
