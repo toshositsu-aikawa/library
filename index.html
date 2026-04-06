@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  img-src 'self' data: https://cover.openbd.jp https://ndlsearch.ndl.go.jp;
+  connect-src https://*.supabase.co https://ndlsearch.ndl.go.jp https://api.openbd.jp;
+">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="図書館">
@@ -1072,7 +1080,9 @@ html, body {
       <input type="text" id="loginBarcodeInput"
         placeholder="バーコードをスキャン…"
         autocomplete="off"
-        style="width:100%;padding:14px;border-radius:12px;border:2px solid #3b82f6;background:#1e2235;color:#dde1ee;font-size:15px;box-sizing:border-box;text-align:center;outline:none;"
+        inputmode="none"
+        lang="en"
+        style="width:100%;padding:14px;border-radius:12px;border:2px solid #3b82f6;background:#1e2235;color:#dde1ee;font-size:15px;box-sizing:border-box;text-align:center;outline:none;ime-mode:disabled;"
         oninput="handleLoginBarcodeScan(this.value)" />
     </div>
     <div class="login-error" id="loginError" style="margin-bottom:8px;"></div>
@@ -2365,6 +2375,19 @@ html, body {
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ============================================================
+// XSSエスケープ
+// ============================================================
+function escHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ============================================================
 // Supabase 接続設定
 // ============================================================
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
@@ -2402,6 +2425,20 @@ const SCHOOL_ABBR = {
   '50401': 'AIK',
   '50402': 'HIG',
   '50403': 'NKH',
+};
+
+// 学校コード→メール・パスワードマップ（自動ログイン用）
+const SCHOOL_EMAILS = {
+  '50301':'takamine@aikawa-lib.jp','50302':'hanbara@aikawa-lib.jp',
+  '50303':'nakatsudai2@aikawa-lib.jp','50304':'sugawara@aikawa-lib.jp',
+  '50305':'nakatsu@aikawa-lib.jp','50306':'tashiro@aikawa-lib.jp',
+  '50401':'aikawa@aikawa-lib.jp','50402':'higashi@aikawa-lib.jp',
+  '50403':'nakahara@aikawa-lib.jp'
+};
+const SCHOOL_PWS = {
+  '50301':'Takamine2026!','50302':'Hanbara2026!','50303':'Nakatsudai2026!',
+  '50304':'Sugawara2026!','50305':'Nakatsu2026!','50306':'Tashiro2026!',
+  '50401':'Aikawa2026!','50402':'Higashi2026!','50403':'Nakahara2026!'
 };
 function getSchoolAbbr(cd) {
   return SCHOOL_ABBR[cd] || cd;
@@ -2514,9 +2551,8 @@ async function handleLoginBarcodeScan(val) {
       currentSchoolCd = schoolCd;
       document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
     }
-    // ログイン情報を保存（自動ログイン用）
-    localStorage.setItem('lib_email', email);
-    localStorage.setItem('lib_password', pw);
+    // 学校コードのみ保存（パスワードは保存しない）
+    localStorage.setItem('lib_school_cd', schoolCd);
     document.getElementById('loginScreen').classList.add('hidden');
     await loadStats(currentSchoolCd);
     await loadBooks(currentSchoolCd);
@@ -2757,9 +2793,8 @@ async function doLogin() {
       document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
     }
     document.getElementById('tab-school-label') && (document.getElementById('tab-school-label').textContent = schoolName);
-    // ログイン情報を独自に保存（次回起動時の自動ログイン用）
-    localStorage.setItem('lib_email', email);
-    localStorage.setItem('lib_password', password);
+    // 学校コードのみ保存（パスワードは保存しない）
+    if (schoolCd) localStorage.setItem('lib_school_cd', schoolCd);
   }
 
   document.getElementById('loginScreen').classList.add('hidden');
@@ -2769,27 +2804,6 @@ async function doLogin() {
 }
 
 // Enterキーでログイン
-// ===== テーマ切り替え =====
-function setTheme(theme) {
-  document.body.classList.remove('theme-light', 'theme-blue')
-  if (theme === 'light') document.body.classList.add('theme-light')
-  if (theme === 'blue')  document.body.classList.add('theme-blue')
-  localStorage.setItem('appTheme', theme)
-  updateThemeButtons(theme)
-}
-
-function updateThemeButtons(theme) {
-  ['dark','light','blue'].forEach(t => {
-    const el = document.getElementById('theme-' + t)
-    if (!el) return
-    el.style.outline = (t === theme) ? '3px solid var(--blue)' : 'none'
-    el.style.outlineOffset = '2px'
-  })
-}
-
-// 保存済みテーマを適用
-const savedTheme = localStorage.getItem('appTheme') || 'dark'
-setTheme(savedTheme)
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('loginPassword')?.addEventListener('keydown', e => {
@@ -2802,7 +2816,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') document.getElementById('studentPassword')?.focus();
   });
   // ログイン画面ではバーコード入力欄に自動フォーカス
-  document.getElementById('loginBarcodeInput')?.focus();
+  const barcodeInput = document.getElementById('loginBarcodeInput');
+  if (barcodeInput) {
+    barcodeInput.focus();
+    // IMEをオフにする（日本語変換を防ぐ）
+    barcodeInput.addEventListener('focus', () => {
+      barcodeInput.setAttribute('lang', 'en');
+    });
+    // Enterキーでもスキャン処理
+    barcodeInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        handleLoginBarcodeScan(barcodeInput.value);
+        barcodeInput.value = '';
+      }
+    });
+  }
   updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
 
   // 起動時セッションチェック：5秒以内に完了しない場合は強制クリアして再読み込み
@@ -4038,35 +4066,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  // 起動時：保存済みのログイン情報で自動ログイン
-  const savedEmail    = localStorage.getItem('lib_email');
-  const savedPassword = localStorage.getItem('lib_password');
-  if (savedEmail && savedPassword) {
-    const { data, error } = await db.auth.signInWithPassword({ email: savedEmail, password: savedPassword });
-    if (!error && data?.user) {
-      const schoolCd   = data.user.user_metadata?.school_cd;
-      const schoolName = data.user.user_metadata?.school_name;
-      const role       = data.user.user_metadata?.role;
-      if (schoolCd) {
-        loginSchoolCd = schoolCd;
-        if (role === 'admin') {
-          currentSchoolCd = '50301';
-          document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
-          const allCard = document.getElementById('allSchoolCard');
-          if (allCard) allCard.style.display = '';
-        } else {
-          currentSchoolCd = schoolCd;
-          document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+  // 起動時：保存済みの学校コードで自動ログイン（パスワードは保存しない）
+  const savedSchoolCd = localStorage.getItem('lib_school_cd');
+  if (savedSchoolCd) {
+    const savedEmail    = SCHOOL_EMAILS[savedSchoolCd];
+    const savedPassword = SCHOOL_PWS[savedSchoolCd];
+    if (savedEmail && savedPassword) {
+      const { data, error } = await db.auth.signInWithPassword({ email: savedEmail, password: savedPassword });
+      if (!error && data?.user) {
+        const schoolCd   = data.user.user_metadata?.school_cd;
+        const schoolName = data.user.user_metadata?.school_name;
+        const role       = data.user.user_metadata?.role;
+        if (schoolCd) {
+          loginSchoolCd = schoolCd;
+          if (role === 'admin') {
+            currentSchoolCd = '50301';
+            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
+            const allCard = document.getElementById('allSchoolCard');
+            if (allCard) allCard.style.display = '';
+          } else {
+            currentSchoolCd = schoolCd;
+            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
+          }
+          document.getElementById('loginScreen').classList.add('hidden');
+          await loadStats(currentSchoolCd);
+          await loadBooks(currentSchoolCd);
+          updateGuestMode(currentSchoolCd);
         }
-        document.getElementById('loginScreen').classList.add('hidden');
-        await loadStats(currentSchoolCd);
-        await loadBooks(currentSchoolCd);
-        updateGuestMode(currentSchoolCd);
+      } else {
+        // 自動ログイン失敗時は保存情報を削除
+        localStorage.removeItem('lib_school_cd');
       }
-    } else {
-      // 自動ログイン失敗時は保存情報を削除
-      localStorage.removeItem('lib_email');
-      localStorage.removeItem('lib_password');
     }
   }
 })
@@ -4075,8 +4105,7 @@ async function doLogout() {
   if (!confirm('ログアウトしますか？')) return;
   try { await db.auth.signOut(); } catch(e) {}
   // 保存済みログイン情報を削除
-  localStorage.removeItem('lib_email');
-  localStorage.removeItem('lib_password');
+  localStorage.removeItem('lib_school_cd');
   // 強制的に画面リセット
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loginEmail').value = '';
