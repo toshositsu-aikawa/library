@@ -9,7 +9,7 @@
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src https://fonts.gstatic.com;
   img-src 'self' data: https://cover.openbd.jp https://ndlsearch.ndl.go.jp;
-  connect-src https://*.supabase.co https://ndlsearch.ndl.go.jp https://api.openbd.jp;
+  connect-src https://*.supabase.co https://ndlsearch.ndl.go.jp https://api.openbd.jp https://cdn.jsdelivr.net;
 ">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2414,6 +2414,17 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 let currentSchoolCd = '50301'
 let loginSchoolCd = '50301' // ログイン時の学校コード（変更不可）
 
+// 蔵書一覧関連
+let currentBooksPage = 0;
+const BOOKS_PER_PAGE = 100;
+let currentBooksKeyword = '';
+let currentBooksFilter = 'all';
+let currentKanaFilter = '';
+let currentCategoryFilter = '';
+
+// バックアップ日管理
+const backupDates = {};
+
 // 学校コード→バーコード略称マップ
 const SCHOOL_ABBR = {
   '50301': 'TAK',
@@ -2973,13 +2984,6 @@ window.addEventListener('online', async () => {
 // ============================================================
 // 蔵書データの読み込み（学校切り替え時・起動時に呼ぶ）
 // ============================================================
-let currentBooksPage = 0;
-const BOOKS_PER_PAGE = 100;
-let currentBooksKeyword = '';
-let currentBooksFilter = 'all';
-let currentKanaFilter = '';
-let currentCategoryFilter = '';
-
 async function loadBooks(schoolCd, keyword = '', filter = 'all') {
   currentBooksKeyword = keyword;
   currentBooksFilter = filter;
@@ -4130,9 +4134,6 @@ async function doLogout() {
   currentSchoolCd = null;
   setTimeout(() => document.getElementById('loginBarcodeInput')?.focus(), 100);
 }
-
-// バックアップ日をメモリで管理
-const backupDates = {};
 
 // ===== タブ切り替え =====
 function switchTab(tab) {
