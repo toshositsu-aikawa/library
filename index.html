@@ -5949,7 +5949,6 @@ async function handleImportFile(input) {
         return;
       }
 
-      const mode = document.getElementById('importDuplicateMode').value;
 
       // 既存データを取得（登録番号・ISBN・書名で検索用）
       const { data: existingBooks } = await db.from('books')
