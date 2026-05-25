@@ -2467,12 +2467,20 @@ function setTheme(theme) {
   if (theme === 'light') document.body.classList.add('theme-light')
   if (theme === 'blue')  document.body.classList.add('theme-blue')
   localStorage.setItem('lib_theme', theme);
-  // 選択中のスタイルを更新
-  ;['dark','light','blue'].forEach(t => {
+  // 選択中のボタンのハイライトを更新
+  updateThemeButtons(theme);
+}
+
+// テーマ選択ボタンのハイライト表示だけを更新する（テーマ自体は変更しない）
+function updateThemeButtons(theme) {
+  // 旧コードは localStorage キー 'appTheme' を参照していたが、
+  // 実際に使用しているキーは 'lib_theme'。未指定時はそちらを採用。
+  const active = theme || localStorage.getItem('lib_theme') || 'dark';
+  ['dark','light','blue'].forEach(t => {
     const el = document.getElementById('theme-' + t)
     if (!el) return
-    el.style.outline = t === theme ? '3px solid var(--blue)' : 'none'
-    el.style.boxShadow = t === theme ? '0 0 0 3px rgba(91,156,246,0.3)' : 'none'
+    el.style.outline = t === active ? '3px solid var(--blue)' : 'none'
+    el.style.boxShadow = t === active ? '0 0 0 3px rgba(91,156,246,0.3)' : 'none'
   })
 }
 
@@ -2843,7 +2851,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
+  updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
 
   // 起動時セッションチェック：5秒以内に完了しない場合は強制クリアして再読み込み
   let _sessionResolved = false;
@@ -3154,7 +3162,7 @@ function toggleAccordion(id) {
   if (!isOpen) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
-    if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
+    if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
     if (id === 'acc-backup') {
       const el = document.getElementById('backupLastDate');
       if (el) el.textContent = `前回のバックアップ: ${backupDates[currentSchoolCd] || '—'}`;
