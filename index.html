@@ -2414,6 +2414,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 // 現在選択中の学校CD
 let currentSchoolCd = '50301'
 let loginSchoolCd = '50301' // ログイン時の学校コード（変更不可）
+let isStudentMode = false // 図書委員モード（宣言を先頭へ移動：TDZエラー対策）
 
 // 蔵書一覧関連
 let currentBooksPage = 0;
@@ -2465,9 +2466,9 @@ function setTheme(theme) {
   document.body.classList.remove('theme-light', 'theme-blue')
   if (theme === 'light') document.body.classList.add('theme-light')
   if (theme === 'blue')  document.body.classList.add('theme-blue')
-  localStorage.setItem('lib_theme', theme)
+  localStorage.setItem('lib_theme', theme);
   // 選択中のスタイルを更新
-  ['dark','light','blue'].forEach(t => {
+  ;['dark','light','blue'].forEach(t => {
     const el = document.getElementById('theme-' + t)
     if (!el) return
     el.style.outline = t === theme ? '3px solid var(--blue)' : 'none'
@@ -2684,7 +2685,6 @@ function switchLoginTab(tab) {
 }
 
 // ===== 図書委員モード =====
-let isStudentMode = false;
 
 async function doStudentLogin() {
   const schoolCd = document.getElementById('studentSchoolCd').value.trim();
