@@ -5993,10 +5993,13 @@ async function handleImportFile(input) {
         const isbnClean = isbnRaw.replace(/-/g, '');
         const regNo = String(row[getCol('registration_no')] || '').trim();
 
-        // 重複チェック：登録番号 → ISBN → 書名 の優先順位
-        const existing = (regNo && existingByRegNo[regNo])
-          || (isbnClean && existingByIsbn[isbnClean])
-          || existingByTitle[title];
+        // 重複チェック：登録番号があれば登録番号のみで判定。
+        // （同一ISBNを別登録番号で複数登録する運用に対応。複数冊を1冊1レコードに
+        //   分割した行が、同じISBNの既存本に誤マッチして弾かれるのを防ぐ）
+        // 登録番号がない行のみ、従来どおり ISBN → 書名 で判定する。
+        const existing = regNo
+          ? existingByRegNo[regNo]
+          : ((isbnClean && existingByIsbn[isbnClean]) || existingByTitle[title]);
 
         const bookData = {
           school_cd:            currentSchoolCd,
