@@ -4141,6 +4141,13 @@ async function doLogout() {
   setTimeout(() => document.getElementById('loginBarcodeInput')?.focus(), 100);
 }
 
+// ===== 点検モード変数（TDZ対策：switchTabより前に宣言） =====
+let invStarted = false;
+let invScanned = 0, invIssues = 0, invTotalBooks = 0;
+let currentSessionId = null;
+let invRealtimeChannel = null;
+let invIsTestMode = false;
+
 // ===== タブ切り替え =====
 function switchTab(tab) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -4484,12 +4491,6 @@ function testScan() {
 document.getElementById('testIsbn').addEventListener('keydown', e => { if (e.key === 'Enter') testScan(); });
 
 // ===== 点検開始 =====
-let invStarted = false;
-let invScanned = 0, invIssues = 0, invTotalBooks = 0;
-let currentSessionId = null;
-let invRealtimeChannel = null;
-let invIsTestMode = false;
-
 // 現在の年度を取得（4月始まり）
 function getCurrentFiscalYear() {
   const now = new Date();
