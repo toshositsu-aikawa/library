@@ -1692,6 +1692,14 @@ html, body {
         <div id="acc-withdraw-icon" style="color:var(--text3);font-size:18px;">›</div>
       </div>
       <div id="acc-withdraw" style="display:none;padding:0 16px 16px;">
+        <div class="list-item" onclick="openWithdrawScanModal()" style="border-radius:10px;background:var(--bg3);margin-bottom:8px;">
+          <div class="list-icon" style="font-size:22px;">📷</div>
+          <div class="list-info">
+            <div class="list-title">バーコード・番号で除籍</div>
+            <div class="list-meta">ISBNスキャンまたは登録番号で1冊ずつ除籍</div>
+          </div>
+          <div style="color:var(--text3);font-size:18px;">›</div>
+        </div>
         <div class="list-item" onclick="openWithdrawList()" style="border-radius:10px;background:var(--bg3);margin-bottom:8px;">
           <div class="list-icon" style="font-size:22px;">📤</div>
           <div class="list-info">
@@ -2132,7 +2140,7 @@ html, body {
     <div class="modal-handle"></div>
     <div class="modal-header">
       <div class="modal-title">📤 除籍登録</div>
-      <button class="modal-close" onclick="closeModal('withdrawModal')">✕</button>
+      <button class="modal-close" onclick="cancelWithdrawModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="withdrawBookInfo" style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;">
@@ -2158,7 +2166,7 @@ html, body {
         <div>除籍登録後も年度別リストから確認できます。校長決裁後に「除籍実行」で確定します。</div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-ghost" onclick="closeModal('withdrawModal')">キャンセル</button>
+        <button class="btn btn-ghost" onclick="cancelWithdrawModal()">キャンセル</button>
         <button class="btn" style="background:var(--orange);color:#000;font-weight:700;" onclick="submitWithdraw()">✓ 除籍登録</button>
       </div>
     </div>
@@ -2175,6 +2183,26 @@ html, body {
     </div>
     <div style="padding:0 16px 8px;flex-shrink:0;font-size:13px;color:var(--text2);" id="multiBookModalDesc"></div>
     <div style="flex:1;overflow-y:auto;padding:0 16px 16px;" id="multiBookList"></div>
+  </div>
+</div>
+
+<!-- バーコード・番号で除籍モーダル -->
+<div class="modal-overlay" id="withdrawScanModal" onclick="closeModalOutside(event,'withdrawScanModal')">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title">📷 バーコード・番号で除籍</div>
+      <button class="modal-close" onclick="closeModal('withdrawScanModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:.85em;color:var(--text2);margin-bottom:12px;">
+        本のISBNバーコードをスキャンするか、登録番号を入力してEnterを押してください。
+      </div>
+      <input class="form-input" id="withdrawScanInput" type="text" inputmode="numeric"
+        placeholder="ISBN または 登録番号"
+        style="font-family:'JetBrains Mono',monospace;font-size:1.1em;margin-bottom:12px;" />
+      <div id="withdrawScanFeedback"></div>
+      <div id="withdrawScanResults" style="margin-top:8px;"></div>
+    </div>
   </div>
 </div>
 
@@ -2390,7 +2418,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix6（未登録本のその場登録フォーム版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-06-10-fix7（バーコード・番号で除籍機能 追加版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -5439,6 +5467,98 @@ function getFiscalYear(date) {
   return m >= 4 ? y : y - 1;
 }
 
+// ===== バーコード・番号で除籍 =====
+let withdrawScanReturn = false; // 除籍完了後にスキャン画面へ戻るフラグ
+
+function openWithdrawScanModal() {
+  document.getElementById('withdrawScanInput').value = '';
+  document.getElementById('withdrawScanFeedback').innerHTML = '';
+  document.getElementById('withdrawScanResults').innerHTML = '';
+  openModal('withdrawScanModal');
+  setTimeout(() => document.getElementById('withdrawScanInput')?.focus(), 200);
+}
+
+async function handleWithdrawScan() {
+  const input = document.getElementById('withdrawScanInput');
+  const fb    = document.getElementById('withdrawScanFeedback');
+  const list  = document.getElementById('withdrawScanResults');
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = '';
+  list.innerHTML = '';
+
+  fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">🔍</div><div><div class="fb-title">検索中…</div><div class="fb-isbn">${val}</div></div></div>`;
+
+  // ISBN・登録番号の両方で検索（除籍済みは除く）
+  const { data, error } = await db.from('books')
+    .select('*')
+    .eq('school_cd', currentSchoolCd)
+    .or(`isbn.eq.${val},registration_no.eq.${val}`)
+    .neq('status', 'withdrawn')
+    .order('registration_no', { ascending: true, nullsFirst: false });
+
+  if (error) {
+    fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❌</div><div><div class="fb-title">検索エラー</div><div class="fb-body">${error.message}</div></div></div>`;
+    input.focus();
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❓</div><div><div class="fb-title">該当なし</div><div class="fb-body">この番号の本は見つかりません（すでに除籍済みの可能性もあります）</div><div class="fb-isbn">${val}</div></div></div>`;
+    input.focus();
+    return;
+  }
+
+  fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📚</div><div><div class="fb-title">${data.length}冊見つかりました</div><div class="fb-body">除籍する本を選んでください</div></div></div>`;
+
+  list.innerHTML = data.map(b => {
+    const regNo = b.registration_no ? `登録番号：${b.registration_no}` : '（登録番号なし）';
+    const lent  = b.status === 'lent'
+      ? '<span style="color:var(--orange);font-size:.8em;font-weight:700;margin-left:8px;">⚠️ 貸出中</span>' : '';
+    return `
+      <div class="list-item" onclick="selectWithdrawScanBook(${b.id})"
+        style="border-radius:10px;background:var(--bg3);margin-bottom:8px;cursor:pointer;">
+        <div class="list-icon" style="font-size:20px;">📕</div>
+        <div class="list-info">
+          <div class="list-title">${b.title || '（書名なし）'}${lent}</div>
+          <div class="list-meta">${regNo}　${b.author || ''}</div>
+        </div>
+        <div style="color:var(--orange);font-weight:700;font-size:.85em;">除籍 ›</div>
+      </div>`;
+  }).join('');
+
+  // 選択用にデータを保持
+  window._withdrawScanBooks = data;
+  input.focus();
+}
+
+function selectWithdrawScanBook(bookId) {
+  const book = (window._withdrawScanBooks || []).find(b => b.id === bookId);
+  if (!book) return;
+  if (book.status === 'lent') {
+    if (!confirm(`「${book.title}」は現在貸出中です。\nそれでも除籍登録しますか？`)) return;
+  }
+  currentBookId = book.id;
+  currentBookData = book;
+  withdrawScanReturn = true;
+  closeModal('withdrawScanModal');
+  openWithdrawModal();
+}
+
+document.getElementById('withdrawScanInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleWithdrawScan();
+});
+
+// 除籍登録モーダルのキャンセル（スキャン除籍から来た場合はスキャン画面に戻る）
+function cancelWithdrawModal() {
+  closeModal('withdrawModal');
+  if (withdrawScanReturn) {
+    withdrawScanReturn = false;
+    openModal('withdrawScanModal');
+    setTimeout(() => document.getElementById('withdrawScanInput')?.focus(), 200);
+  }
+}
+
 function openWithdrawModal() {
   if (!currentBookData) return;
   closeModal('bookDetailModal');
@@ -5479,9 +5599,20 @@ async function submitWithdraw() {
   } else {
     await loadBooks(currentSchoolCd);
     await loadStats(currentSchoolCd);
-    alert(`「${currentBookData.title}」を除籍登録しました。\n除籍リストから確認・Excel出力できます。`);
+    const doneTitle = currentBookData.title;
     currentBookId = null;
     currentBookData = null;
+    if (withdrawScanReturn) {
+      // スキャン除籍から来た場合：スキャン画面に戻って連続処理
+      withdrawScanReturn = false;
+      openModal('withdrawScanModal');
+      document.getElementById('withdrawScanResults').innerHTML = '';
+      document.getElementById('withdrawScanFeedback').innerHTML =
+        `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">除籍登録しました</div><div class="fb-body">${doneTitle}</div></div></div>`;
+      setTimeout(() => document.getElementById('withdrawScanInput')?.focus(), 200);
+    } else {
+      alert(`「${doneTitle}」を除籍登録しました。\n除籍リストから確認・Excel出力できます。`);
+    }
   }
 }
 
