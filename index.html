@@ -2373,7 +2373,6 @@ html, body {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="xlsx.full.min.js"></script>
 <script>
 // ============================================================
 // XSSエスケープ
@@ -2414,7 +2413,6 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 // 現在選択中の学校CD
 let currentSchoolCd = '50301'
 let loginSchoolCd = '50301' // ログイン時の学校コード（変更不可）
-let isStudentMode = false // 図書委員モード（宣言を先頭へ移動：TDZエラー対策）
 
 // 蔵書一覧関連
 let currentBooksPage = 0;
@@ -2466,21 +2464,13 @@ function setTheme(theme) {
   document.body.classList.remove('theme-light', 'theme-blue')
   if (theme === 'light') document.body.classList.add('theme-light')
   if (theme === 'blue')  document.body.classList.add('theme-blue')
-  localStorage.setItem('lib_theme', theme);
-  // 選択中のボタンのハイライトを更新
-  updateThemeButtons(theme);
-}
-
-// テーマ選択ボタンのハイライト表示だけを更新する（テーマ自体は変更しない）
-function updateThemeButtons(theme) {
-  // 旧コードは localStorage キー 'appTheme' を参照していたが、
-  // 実際に使用しているキーは 'lib_theme'。未指定時はそちらを採用。
-  const active = theme || localStorage.getItem('lib_theme') || 'dark';
+  localStorage.setItem('lib_theme', theme)
+  // 選択中のスタイルを更新
   ['dark','light','blue'].forEach(t => {
     const el = document.getElementById('theme-' + t)
     if (!el) return
-    el.style.outline = t === active ? '3px solid var(--blue)' : 'none'
-    el.style.boxShadow = t === active ? '0 0 0 3px rgba(91,156,246,0.3)' : 'none'
+    el.style.outline = t === theme ? '3px solid var(--blue)' : 'none'
+    el.style.boxShadow = t === theme ? '0 0 0 3px rgba(91,156,246,0.3)' : 'none'
   })
 }
 
@@ -2693,6 +2683,7 @@ function switchLoginTab(tab) {
 }
 
 // ===== 図書委員モード =====
+let isStudentMode = false;
 
 async function doStudentLogin() {
   const schoolCd = document.getElementById('studentSchoolCd').value.trim();
@@ -2851,7 +2842,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
+  updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
 
   // 起動時セッションチェック：5秒以内に完了しない場合は強制クリアして再読み込み
   let _sessionResolved = false;
@@ -3162,7 +3153,7 @@ function toggleAccordion(id) {
   if (!isOpen) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
-    if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
+    if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('appTheme') || 'dark');
     if (id === 'acc-backup') {
       const el = document.getElementById('backupLastDate');
       if (el) el.textContent = `前回のバックアップ: ${backupDates[currentSchoolCd] || '—'}`;
@@ -4018,9 +4009,15 @@ function showMultiBookModal(books, isbn, mode, onSelect, onNew = null) {
   const desc  = document.getElementById('multiBookModalDesc');
   const list  = document.getElementById('multiBookList');
 
-  const modeLabel = mode === 'lend' ? '貸出する' : mode === 'ret' ? '返却する' : '点検済みにする';
+  const modeLabel = mode === 'lend' ? '貸出する' : mode === 'ret' ? '返却する' : mode === 'reg' ? '詳細を開く' : '点検済みにする';
   title.textContent = `📚 ${books[0]?.title || ''}`;
-  desc.textContent  = `同じ本が${books.length}冊あります。${modeLabel}1冊を選んでください。`;
+  if (mode === 'reg') {
+    desc.textContent = books.length === 1
+      ? `このISBNで1冊登録済みです。詳細を確認するか、別の登録番号で追加登録できます。`
+      : `同じISBNで${books.length}冊登録済みです。詳細を確認するか、別の登録番号で追加登録できます。`;
+  } else {
+    desc.textContent = `同じ本が${books.length}冊あります。${modeLabel}1冊を選んでください。`;
+  }
 
   const rows = books.map((b, i) => {
     const regNo = b.registration_no ? `登録番号：${b.registration_no}` : `（登録番号なし）`;
@@ -4357,13 +4354,8 @@ async function handleHomeScan() {
     // 登録モード
     const existingBooks = await findBooksByISBN(val, currentSchoolCd);
     const regShelfId = document.getElementById('regShelfId')?.value || null;
-    if (existingBooks.length === 1) {
-      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">登録済みです（1冊）</div><div class="fb-body">${existingBooks[0].title}</div><div class="fb-isbn">${val}</div></div></div>`;
-      input.focus();
-      return;
-    }
-    if (existingBooks.length > 1) {
-      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">登録済みです（${existingBooks.length}冊）</div><div class="fb-body">${existingBooks[0].title}</div></div></div>`;
+    if (existingBooks.length >= 1) {
+      fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">登録済みです（${existingBooks.length}冊）</div><div class="fb-body">${existingBooks[0].title}</div><div class="fb-isbn">${val}</div></div></div>`;
       // 「この中にない」→新規登録へ
       showMultiBookModal(existingBooks, val, 'reg',
         (book) => {
@@ -5894,7 +5886,7 @@ async function handleImportFile(input) {
   if (!window.XLSX) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = 'xlsx.full.min.js';
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
       s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
@@ -5957,6 +5949,7 @@ async function handleImportFile(input) {
         return;
       }
 
+      const mode = document.getElementById('importDuplicateMode').value;
 
       // 既存データを取得（登録番号・ISBN・書名で検索用）
       const { data: existingBooks } = await db.from('books')
@@ -5993,13 +5986,10 @@ async function handleImportFile(input) {
         const isbnClean = isbnRaw.replace(/-/g, '');
         const regNo = String(row[getCol('registration_no')] || '').trim();
 
-        // 重複チェック：登録番号があれば登録番号のみで判定。
-        // （同一ISBNを別登録番号で複数登録する運用に対応。複数冊を1冊1レコードに
-        //   分割した行が、同じISBNの既存本に誤マッチして弾かれるのを防ぐ）
-        // 登録番号がない行のみ、従来どおり ISBN → 書名 で判定する。
-        const existing = regNo
-          ? existingByRegNo[regNo]
-          : ((isbnClean && existingByIsbn[isbnClean]) || existingByTitle[title]);
+        // 重複チェック：登録番号 → ISBN → 書名 の優先順位
+        const existing = (regNo && existingByRegNo[regNo])
+          || (isbnClean && existingByIsbn[isbnClean])
+          || existingByTitle[title];
 
         const bookData = {
           school_cd:            currentSchoolCd,
@@ -6099,7 +6089,7 @@ async function exportBackupExcel() {
   if (!window.XLSX) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = 'xlsx.full.min.js';
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
       s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
@@ -6172,7 +6162,7 @@ async function exportWithdrawExcel() {
   if (!window.XLSX) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = 'xlsx.full.min.js';
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
       s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
