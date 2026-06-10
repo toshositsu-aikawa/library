@@ -1344,7 +1344,7 @@ html, body {
             </div>
           </div>
           <button id="mainSessionBtn" onclick="joinOrStartMainSession()" style="width:100%;padding:14px;background:var(--green);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1em;cursor:pointer;">
-            読み込み中…
+            🚀 点検を開始する
           </button>
         </div>
       </div>
@@ -4506,39 +4506,51 @@ async function checkActiveSession() {
   const fy = getCurrentFiscalYear();
   const sessionName = `令和${toReiwa(fy)}年度 蔵書点検`;
 
-  // 本番セッションを探す（is_test=false、当該年度）
-  const { data } = await db.from('inventory_sessions')
-    .select('*')
-    .eq('school_cd', currentSchoolCd)
-    .eq('fiscal_year', fy)
-    .eq('is_test', false)
-    .order('started_at', { ascending: false })
-    .limit(1);
-
-  // 総蔵書数を取得
-  const { count: totalCount } = await db.from('books')
-    .select('*', { count: 'exact', head: true })
-    .eq('school_cd', currentSchoolCd)
-    .neq('status', 'withdrawn');
-  invTotalBooks = totalCount || 0;
-
   const nameEl  = document.getElementById('mainSessionName');
   const metaEl  = document.getElementById('mainSessionMeta');
   const btn     = document.getElementById('mainSessionBtn');
 
   if (nameEl) nameEl.textContent = sessionName;
 
-  if (data && data.length > 0) {
-    const s = data[0];
-    currentSessionId = s.id;
-    invScanned = s.scanned_count || 0;
-    const date = new Date(s.started_at).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
-    if (metaEl) metaEl.textContent = `${date}開始・進行中`;
-    if (btn) btn.textContent = '▶ 点検を続ける';
-  } else {
+  try {
+    // 本番セッションを探す（is_test=false、当該年度）
+    const { data, error: sessErr } = await db.from('inventory_sessions')
+      .select('*')
+      .eq('school_cd', currentSchoolCd)
+      .eq('fiscal_year', fy)
+      .eq('is_test', false)
+      .order('started_at', { ascending: false })
+      .limit(1);
+
+    if (sessErr) throw sessErr;
+
+    // 総蔵書数を取得
+    const { count: totalCount, error: cntErr } = await db.from('books')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_cd', currentSchoolCd)
+      .neq('status', 'withdrawn');
+
+    if (cntErr) throw cntErr;
+    invTotalBooks = totalCount || 0;
+
+    if (data && data.length > 0) {
+      const s = data[0];
+      currentSessionId = s.id;
+      invScanned = s.scanned_count || 0;
+      const date = new Date(s.started_at).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
+      if (metaEl) metaEl.textContent = `${date}開始・進行中`;
+      if (btn) btn.textContent = '▶ 点検を続ける';
+    } else {
+      currentSessionId = null;
+      invScanned = 0;
+      if (metaEl) metaEl.textContent = '未開始';
+      if (btn) btn.textContent = '🚀 点検を開始する';
+    }
+  } catch (err) {
+    console.error('checkActiveSession error:', err);
     currentSessionId = null;
     invScanned = 0;
-    if (metaEl) metaEl.textContent = '未開始';
+    if (metaEl) metaEl.textContent = '読み込みエラー（再度タブを開いてください）';
     if (btn) btn.textContent = '🚀 点検を開始する';
   }
   updateMainSessionProgress();
