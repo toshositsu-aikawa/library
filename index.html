@@ -9,8 +9,9 @@
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src https://fonts.gstatic.com;
   img-src 'self' data: https://cover.openbd.jp https://ndlsearch.ndl.go.jp;
-  connect-src https://*.supabase.co https://ndlsearch.ndl.go.jp https://api.openbd.jp https://cdn.jsdelivr.net;
+  connect-src https://*.supabase.co wss://*.supabase.co https://ndlsearch.ndl.go.jp https://api.openbd.jp https://cdn.jsdelivr.net;
 ">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="図書館">
@@ -2390,7 +2391,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix3（パスワード削除・手入力ログイン版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-06-10-fix4（CSP WebSocket許可版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -4630,18 +4631,23 @@ function resumeSession() {
   setTimeout(() => document.getElementById('invIsbn')?.focus(), 150);
 }
 
-// リアルタイム購読
+// リアルタイム購読（失敗しても点検は続行できる）
 function subscribeSession() {
-  if (invRealtimeChannel) invRealtimeChannel.unsubscribe();
-  if (!currentSessionId) return;
-  invRealtimeChannel = db.channel('session-' + currentSessionId)
-    .on('postgres_changes', {
-      event: 'UPDATE', schema: 'public', table: 'inventory_sessions',
-      filter: `id=eq.${currentSessionId}`
-    }, payload => {
-      invScanned = payload.new.scanned_count || 0;
-      updateInvUI();
-    }).subscribe();
+  try {
+    if (invRealtimeChannel) invRealtimeChannel.unsubscribe();
+    if (!currentSessionId) return;
+    invRealtimeChannel = db.channel('session-' + currentSessionId)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'inventory_sessions',
+        filter: `id=eq.${currentSessionId}`
+      }, payload => {
+        invScanned = payload.new.scanned_count || 0;
+        updateInvUI();
+      }).subscribe();
+  } catch (err) {
+    console.warn('リアルタイム同期は利用できませんが、点検は続行できます:', err);
+    invRealtimeChannel = null;
+  }
 }
 
 function updateInvUI() {
