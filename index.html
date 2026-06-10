@@ -2390,6 +2390,8 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
+console.log('%c📚 図書館システム v2026-06-10-fix3（パスワード削除・手入力ログイン版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
 
@@ -2447,11 +2449,7 @@ const SCHOOL_EMAILS = {
   '50401':'aikawa@aikawa-lib.jp','50402':'higashi@aikawa-lib.jp',
   '50403':'nakahara@aikawa-lib.jp'
 };
-const SCHOOL_PWS = {
-  '50301':'Takamine2026!','50302':'Hanbara2026!','50303':'Nakatsudai2026!',
-  '50304':'Sugawara2026!','50305':'Nakatsu2026!','50306':'Tashiro2026!',
-  '50401':'Aikawa2026!','50402':'Higashi2026!','50403':'Nakahara2026!'
-};
+// SCHOOL_PWS は削除済み（セキュリティ対応：パスワードはハードコードしない）
 function getSchoolAbbr(cd) {
   return SCHOOL_ABBR[cd] || cd;
 }
@@ -2540,41 +2538,24 @@ async function handleLoginBarcodeScan(val) {
     '50401':'aikawa@aikawa-lib.jp','50402':'higashi@aikawa-lib.jp',
     '50403':'nakahara@aikawa-lib.jp'
   };
-  const SCHOOL_PWS = {
-    '50301':'Takamine2026!','50302':'Hanbara2026!','50303':'Nakatsudai2026!',
-    '50304':'Sugawara2026!','50305':'Nakatsu2026!','50306':'Tashiro2026!',
-    '50401':'Aikawa2026!','50402':'Higashi2026!','50403':'Nakahara2026!'
-  };
-
   if (teacherMatch) {
-    // 先生用：teacher_tokenと照合
+    // 先生用：teacher_tokenと照合（セキュリティ対応：パスワードは手入力）
     if (!data.teacher_token || !data.teacher_token.includes(token)) {
       errEl.textContent = '無効なバーコードです';
       return;
     }
     const email = SCHOOL_EMAILS[schoolCd];
-    const pw    = SCHOOL_PWS[schoolCd];
-    if (!email || !pw) { errEl.textContent = '学校情報が見つかりません'; return; }
-
-    const { data: loginData, error: loginErr } = await db.auth.signInWithPassword({ email, password: pw });
-    if (loginErr) { errEl.textContent = 'ログインに失敗しました'; return; }
+    if (!email) { errEl.textContent = '学校情報が見つかりません'; return; }
 
     const schoolName = SCHOOL_NAMES[schoolCd] || schoolCd;
-    const role = loginData.user?.user_metadata?.role;
-    loginSchoolCd = schoolCd;
-    if (role === 'admin') {
-      currentSchoolCd = '50301';
-      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
-    } else {
-      currentSchoolCd = schoolCd;
-      document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
-    }
-    // 学校コードのみ保存（パスワードは保存しない）
-    localStorage.setItem('lib_school_cd', schoolCd);
-    document.getElementById('loginScreen').classList.add('hidden');
-    await loadStats(currentSchoolCd);
-    await loadBooks(currentSchoolCd);
-    updateGuestMode(currentSchoolCd);
+    // メールアドレスを自動入力し、パスワード欄にフォーカス
+    const emailEl = document.getElementById('loginEmail');
+    const pwEl    = document.getElementById('loginPassword');
+    if (emailEl) emailEl.value = email;
+    if (pwEl) { pwEl.value = ''; pwEl.focus(); }
+    errEl.style.color = 'var(--green)';
+    errEl.textContent = `✅ ${schoolName}のバーコードを確認しました。パスワードを入力してください`;
+    setTimeout(() => { errEl.style.color = ''; }, 8000);
 
   } else {
     // 図書委員用：password_hashから生成したトークンと照合
@@ -4081,37 +4062,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  // 起動時：保存済みの学校コードで自動ログイン（パスワードは保存しない）
+  // 起動時：保存済みの学校コードからメールアドレスのみ自動入力
+  // （セキュリティ対応：パスワードは保存・ハードコードしないため手入力）
   const savedSchoolCd = localStorage.getItem('lib_school_cd');
   if (savedSchoolCd) {
-    const savedEmail    = SCHOOL_EMAILS[savedSchoolCd];
-    const savedPassword = SCHOOL_PWS[savedSchoolCd];
-    if (savedEmail && savedPassword) {
-      const { data, error } = await db.auth.signInWithPassword({ email: savedEmail, password: savedPassword });
-      if (!error && data?.user) {
-        const schoolCd   = data.user.user_metadata?.school_cd;
-        const schoolName = data.user.user_metadata?.school_name;
-        const role       = data.user.user_metadata?.role;
-        if (schoolCd) {
-          loginSchoolCd = schoolCd;
-          if (role === 'admin') {
-            currentSchoolCd = '50301';
-            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
-            const allCard = document.getElementById('allSchoolCard');
-            if (allCard) allCard.style.display = '';
-          } else {
-            currentSchoolCd = schoolCd;
-            document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
-          }
-          document.getElementById('loginScreen').classList.add('hidden');
-          await loadStats(currentSchoolCd);
-          await loadBooks(currentSchoolCd);
-          updateGuestMode(currentSchoolCd);
-        }
-      } else {
-        // 自動ログイン失敗時は保存情報を削除
-        localStorage.removeItem('lib_school_cd');
-      }
+    const savedEmail = SCHOOL_EMAILS[savedSchoolCd];
+    const emailEl = document.getElementById('loginEmail');
+    if (savedEmail && emailEl && !emailEl.value) {
+      emailEl.value = savedEmail;
+      setTimeout(() => document.getElementById('loginPassword')?.focus(), 100);
     }
   }
 })
