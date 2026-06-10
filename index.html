@@ -2390,7 +2390,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix5（点検終了画面 実データ連動版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-06-10-fix6（未登録本のその場登録フォーム版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -4695,14 +4695,14 @@ async function fetchBookInfo(isbn) {
 let pendingBookData = null;
 
 // 未登録本を登録するモーダルを表示
-function showRegisterModal(isbn, bookInfo, shelfId = null) {
+function showRegisterModal(isbn, bookInfo, shelfId = null, context = 'home') {
   const isAikBarcode = isLocalBarcode(isbn);
   const title = bookInfo ? bookInfo.title : '';
   const author = bookInfo ? (bookInfo.author || '') : '';
   const publisher = bookInfo ? (bookInfo.publisher || '') : '';
   const price = bookInfo ? (bookInfo.price || null) : null;
 
-  pendingBookData = { isbn, title, author, publisher, price, shelfId };
+  pendingBookData = { isbn, title, author, publisher, price, shelfId, context };
 
   const existing = document.getElementById('unregModal');
   if (existing) existing.remove();
@@ -4757,52 +4757,86 @@ function showRegisterModal(isbn, bookInfo, shelfId = null) {
     });
     document.getElementById('unregSkipBtn').addEventListener('click', () => {
       modal.remove();
-      document.getElementById('homeIsbn')?.focus();
+      const focusId = (pendingBookData && pendingBookData.context === 'inv') ? 'invIsbn' : 'homeIsbn';
+      document.getElementById(focusId)?.focus();
     });
     setTimeout(() => document.getElementById('unregTitle')?.focus(), 300);
   } else {
-    // ISBN本：従来の確認ダイアログ
+    // ISBN本：書誌情報を自動入力した編集フォームを表示
+    const infoNote = bookInfo
+      ? `<div style="font-size:.78em;color:var(--text3);margin-bottom:14px;">📖 書誌情報を自動取得しました。修正があれば直接編集できます。</div>`
+      : `<div style="font-size:.78em;color:var(--gold);margin-bottom:14px;">⚠️ このISBNの書誌情報が見つかりませんでした。書名などを手入力してください。</div>`;
     modal.innerHTML = `
-      <div style="background:var(--bg2);border-radius:20px 20px 16px 16px;width:100%;max-width:480px;padding:24px;box-shadow:0 -4px 40px rgba(0,0,0,0.5);">
-        <div style="font-size:1.1em;font-weight:700;margin-bottom:16px;">📚 未登録の本が見つかりました</div>
-        <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;">
-          <div style="font-size:1.05em;font-weight:700;margin-bottom:4px;">${title || '（書誌情報なし）'}</div>
-          <div style="color:var(--text2);font-size:.85em;">${author}</div>
-          <div style="color:var(--text2);font-size:.85em;">${publisher}</div>
-          <div style="color:var(--text3);font-size:.8em;margin-top:6px;font-family:monospace;">ISBN: ${isbn}</div>
+      <div style="background:var(--bg2);border-radius:20px 20px 16px 16px;width:100%;max-width:480px;padding:24px;box-shadow:0 -4px 40px rgba(0,0,0,0.5);max-height:80vh;overflow-y:auto;">
+        <div style="font-size:1.1em;font-weight:700;margin-bottom:4px;">📚 未登録の本が見つかりました</div>
+        <div style="font-size:.8em;color:var(--text3);font-family:monospace;margin-bottom:10px;">ISBN: ${isbn}</div>
+        ${infoNote}
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">書名 <span style="color:var(--red);">*</span></label>
+          <input id="unregTitle" class="form-input" type="text" placeholder="書名を入力してください" style="font-size:1em;" />
         </div>
-        <div style="color:var(--text2);font-size:.85em;margin-bottom:20px;">
-          この本は蔵書データベースに登録されていません。今すぐ追加しますか？
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">登録番号（任意）</label>
+          <input id="unregRegNo" class="form-input" type="text" inputmode="numeric" placeholder="例: 12345" style="font-family:'JetBrains Mono',monospace;" />
+          <div style="font-size:.75em;color:var(--text3);margin-top:4px;">本に貼られている登録番号ラベルの番号を入力してください</div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">著者</label>
+          <input id="unregAuthor" class="form-input" type="text" placeholder="著者名" />
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:.85em;color:var(--text3);display:block;margin-bottom:4px;">出版社</label>
+          <input id="unregPublisher" class="form-input" type="text" placeholder="出版社" />
         </div>
         <div style="display:flex;gap:10px;">
           <button id="unregRegisterBtn"
             style="flex:1;padding:16px;background:var(--green);color:#000;border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
             ✅ 登録する
           </button>
-        <button id="unregSkipBtn"
-          style="flex:1;padding:16px;background:var(--bg4);color:var(--text);border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
-          スキップ
-        </button>
-      </div>
-    </div>`;
+          <button id="unregSkipBtn"
+            style="flex:1;padding:16px;background:var(--bg4);color:var(--text);border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
+            スキップ
+          </button>
+        </div>
+      </div>`;
     document.body.appendChild(modal);
-    document.getElementById('unregRegisterBtn').addEventListener('click', registerHomeBook);
+    // 取得済みの書誌情報をフォームに反映
+    document.getElementById('unregTitle').value     = title || '';
+    document.getElementById('unregAuthor').value    = author || '';
+    document.getElementById('unregPublisher').value = publisher || '';
+    document.getElementById('unregRegisterBtn').addEventListener('click', async () => {
+      const titleVal = document.getElementById('unregTitle').value.trim();
+      if (!titleVal) { alert('書名を入力してください'); return; }
+      pendingBookData.title = titleVal;
+      pendingBookData.author = document.getElementById('unregAuthor').value.trim();
+      pendingBookData.publisher = document.getElementById('unregPublisher').value.trim();
+      pendingBookData.registration_no = document.getElementById('unregRegNo').value.trim() || null;
+      await registerHomeBook();
+    });
     document.getElementById('unregSkipBtn').addEventListener('click', () => {
       document.getElementById('unregModal').remove();
-      document.getElementById('homeIsbn')?.focus();
+      const focusId = (pendingBookData && pendingBookData.context === 'inv') ? 'invIsbn' : 'homeIsbn';
+      document.getElementById(focusId)?.focus();
     });
+    // 書誌情報がある場合は登録番号欄に、ない場合は書名欄にフォーカス
+    setTimeout(() => {
+      const target = title ? 'unregRegNo' : 'unregTitle';
+      document.getElementById(target)?.focus();
+    }, 300);
   }
 }
 
-// ホーム画面からの書籍登録（場所情報付き）
+// 書籍登録（ホーム画面・点検画面の両方に対応）
 async function registerHomeBook() {
   if (!pendingBookData) return;
 
   const modal = document.getElementById('unregModal');
   if (modal) modal.remove();
-  const fb = document.getElementById('homeFeedback');
 
-  const { isbn, title, author, publisher, price, shelfId, registration_no } = pendingBookData;
+  const { isbn, title, author, publisher, price, shelfId, registration_no, context } = pendingBookData;
+  const isInv = context === 'inv';
+  // 結果は「いま見ている画面」に表示する
+  const fb = document.getElementById(isInv ? 'invFeedback' : 'homeFeedback');
 
   const insertData = {
     school_cd: currentSchoolCd,
@@ -4817,50 +4851,41 @@ async function registerHomeBook() {
   if (shelfId) insertData.shelf_id = Number(shelfId);
   if (registration_no) insertData.registration_no = registration_no;
 
-  const { error } = await db.from('books').insert(insertData);
+  const { data: newBook, error } = await db.from('books').insert(insertData).select().single();
   pendingBookData = null;
 
   if (error) {
     if (fb) fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❌</div><div><div class="fb-title">登録失敗</div><div class="fb-body">${error.message}</div></div></div>`;
   } else {
-    if (fb) fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">登録完了</div><div class="fb-body">${title} を蔵書に追加しました${registration_no ? '（登録番号：'+registration_no+'）' : ''}</div></div></div>`;
+    const regLabel = registration_no ? `（登録番号：${registration_no}）` : '';
+    if (fb) fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">登録完了</div><div class="fb-body">${title} を蔵書に追加しました${regLabel}</div></div></div>`;
+
+    if (isInv) {
+      // 点検中の登録：手に取って確認した本なので「確認済み」としても記録
+      invTotalBooks++;
+      if (currentSessionId && newBook?.id) {
+        try {
+          await db.from('inventory_scanned').upsert({
+            session_id: currentSessionId,
+            book_id: newBook.id,
+            school_cd: currentSchoolCd,
+          }, { onConflict: 'session_id,book_id' });
+          invScanned++;
+          await db.from('inventory_sessions')
+            .update({ scanned_count: invScanned })
+            .eq('id', currentSessionId);
+        } catch (e) { console.warn('点検記録の更新に失敗:', e); }
+      }
+      updateInvUI();
+      const now = new Date();
+      const t = `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+      addInvLog(t, `【新規登録】${title}${regLabel}`, 'ok');
+    }
+
     await loadStats(currentSchoolCd);
     await loadBooks(currentSchoolCd);
   }
-  document.getElementById('homeIsbn')?.focus();
-}
-
-async function registerUnknownBook() {
-  if (!pendingBookData) return;
-  const { isbn, title, author, publisher, price } = pendingBookData;
-
-  const modal = document.getElementById('unregModal');
-  if (modal) modal.remove();
-  const fb = document.getElementById('invFeedback');
-
-  const { error } = await db.from('books').insert({
-    school_cd: currentSchoolCd,
-    isbn: isbn,
-    title: title,
-    author: author || null,
-    publisher: publisher || null,
-    price: price || null,
-    copies: 1,
-    registered_at: new Date().toISOString().slice(0,10),
-  });
-
-  pendingBookData = null;
-
-  if (error) {
-    fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❌</div><div><div class="fb-title">登録失敗</div><div class="fb-body">${error.message}</div></div></div>`;
-  } else {
-    fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">✅</div><div><div class="fb-title">登録完了</div><div class="fb-body">${title} を蔵書に追加しました</div></div></div>`;
-    invTotalBooks++;
-    updateInvUI();
-    await loadStats(currentSchoolCd);
-    await loadBooks(currentSchoolCd);
-  }
-  document.getElementById('invIsbn').focus();
+  document.getElementById(isInv ? 'invIsbn' : 'homeIsbn')?.focus();
 }
 
 async function handleInvScan() {
@@ -4943,7 +4968,7 @@ async function handleInvScan() {
     fb.innerHTML = `<div class="feedback warn" style="border-color:var(--blue);background:var(--blue-dim)"><div class="fb-icon">📚</div><div><div class="fb-title">未登録の本</div><div class="fb-body">${displayTitle}</div><div class="fb-isbn">${val}</div></div></div>`;
     addInvLog(t, `【未登録】${displayTitle}`, 'unregistered');
 
-    showRegisterModal(val, info);
+    showRegisterModal(val, info, null, 'inv');
     return;
   } else if (invBooks.length === 1) {
     await proceedInvScan(invBooks[0]);
