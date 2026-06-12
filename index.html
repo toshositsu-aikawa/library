@@ -1475,8 +1475,9 @@ html, body {
       </div>
 
       <!-- スキャン履歴 -->
-      <div class="section-header-row">
+      <div class="section-header-row" style="display:flex;justify-content:space-between;align-items:center;">
         <div class="section-title-text">最近のスキャン</div>
+        <button onclick="openScannedListModal()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📋 一覧・取り消し</button>
       </div>
       <div class="card">
         <div class="scan-log" id="invLog">
@@ -2186,6 +2187,29 @@ html, body {
   </div>
 </div>
 
+<!-- スキャン済み一覧・取り消しモーダル -->
+<div class="modal-overlay" id="scannedListModal" onclick="closeModalOutside(event,'scannedListModal')">
+  <div class="modal" style="max-width:560px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <div class="modal-title">📋 スキャン済み一覧 <span id="scannedListCount" style="font-size:.8em;color:var(--text3);"></span></div>
+      <button class="modal-close" onclick="closeModal('scannedListModal')">✕</button>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+      <input class="form-input" id="scannedListSearch" type="text"
+        placeholder="🔍 書名・登録番号で絞り込み"
+        oninput="renderScannedList()" style="margin-bottom:10px;" />
+      <div id="scannedListBody" style="flex:1;"></div>
+      <div id="scannedListMore" style="text-align:center;margin-top:8px;"></div>
+      <div style="position:sticky;bottom:0;background:var(--bg2);padding-top:10px;margin-top:8px;border-top:1px solid var(--border);">
+        <button class="btn" id="scannedDeleteBtn" onclick="deleteSelectedScans()"
+          style="width:100%;background:var(--red);color:#fff;font-weight:700;opacity:.5;" disabled>
+          🗑 選択した0件のスキャンを取り消す
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- バーコード・番号で除籍モーダル -->
 <div class="modal-overlay" id="withdrawScanModal" onclick="closeModalOutside(event,'withdrawScanModal')">
   <div class="modal" style="max-width:520px;">
@@ -2418,7 +2442,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix9（複数端末同期 修正版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-06-10-fix10（スキャン取り消し機能 追加版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -4495,6 +4519,156 @@ function toReiwa(year) {
 }
 
 // 点検タブに切り替えたときに本番セッションをロード
+// ===== スキャン済み一覧・取り消し =====
+let _scannedListItems = [];   // 読み込み済みの一覧（{scanId, bookId, title, regNo, author}）
+let _scannedListOffset = 0;   // ページング位置
+let _scannedSelected = new Set(); // 選択中のscan id
+const SCANNED_PAGE_SIZE = 100;
+
+async function openScannedListModal() {
+  _scannedListItems = [];
+  _scannedListOffset = 0;
+  _scannedSelected = new Set();
+  document.getElementById('scannedListSearch').value = '';
+  document.getElementById('scannedListBody').innerHTML =
+    '<div style="text-align:center;color:var(--text3);padding:20px;">読み込み中…</div>';
+  document.getElementById('scannedListCount').textContent = '';
+  openModal('scannedListModal');
+  await loadScannedPage();
+}
+
+async function loadScannedPage() {
+  if (!currentSessionId) {
+    document.getElementById('scannedListBody').innerHTML =
+      '<div style="text-align:center;color:var(--text3);padding:20px;">点検セッションがありません</div>';
+    return;
+  }
+  // ① スキャン記録を新しい順に取得（idの降順＝新しい順）
+  const { data: scans, error } = await db.from('inventory_scanned')
+    .select('id, book_id')
+    .eq('session_id', currentSessionId)
+    .order('id', { ascending: false })
+    .range(_scannedListOffset, _scannedListOffset + SCANNED_PAGE_SIZE - 1);
+
+  if (error) {
+    document.getElementById('scannedListBody').innerHTML =
+      `<div style="text-align:center;color:var(--red);padding:20px;">読み込みエラー: ${error.message}</div>`;
+    return;
+  }
+
+  // ② 対応する本の情報を取得
+  if (scans && scans.length > 0) {
+    const bookIds = scans.map(s => s.book_id);
+    const { data: books } = await db.from('books')
+      .select('id, title, registration_no, author')
+      .in('id', bookIds);
+    const bookMap = {};
+    (books || []).forEach(b => { bookMap[b.id] = b; });
+
+    scans.forEach(s => {
+      const b = bookMap[s.book_id] || {};
+      _scannedListItems.push({
+        scanId: s.id,
+        bookId: s.book_id,
+        title: b.title || '（書名不明）',
+        regNo: b.registration_no || '',
+        author: b.author || '',
+      });
+    });
+    _scannedListOffset += scans.length;
+  }
+
+  // さらに読み込むボタンの表示制御
+  const moreEl = document.getElementById('scannedListMore');
+  if (scans && scans.length === SCANNED_PAGE_SIZE) {
+    moreEl.innerHTML = `<button class="btn btn-ghost" onclick="loadScannedPage()" style="font-size:.85em;">▼ さらに${SCANNED_PAGE_SIZE}件読み込む</button>`;
+  } else {
+    moreEl.innerHTML = '';
+  }
+
+  renderScannedList();
+}
+
+function renderScannedList() {
+  const body = document.getElementById('scannedListBody');
+  const keyword = document.getElementById('scannedListSearch').value.trim().toLowerCase();
+
+  const items = keyword
+    ? _scannedListItems.filter(it =>
+        (it.title || '').toLowerCase().includes(keyword) ||
+        (it.regNo || '').toLowerCase().includes(keyword))
+    : _scannedListItems;
+
+  document.getElementById('scannedListCount').textContent =
+    keyword ? `（絞り込み：${items.length}件 / 読込済み${_scannedListItems.length}件）`
+            : `（読込済み${_scannedListItems.length}件）`;
+
+  if (items.length === 0) {
+    body.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;">該当するスキャン記録がありません</div>';
+    updateScannedDeleteBtn();
+    return;
+  }
+
+  body.innerHTML = items.map(it => {
+    const checked = _scannedSelected.has(it.scanId) ? 'checked' : '';
+    const regNo = it.regNo ? `登録番号：${it.regNo}` : '（登録番号なし）';
+    return `
+      <label class="list-item" style="border-radius:10px;background:var(--bg3);margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;">
+        <input type="checkbox" ${checked} onchange="toggleScannedSelect(${it.scanId}, this.checked)"
+          style="width:18px;height:18px;accent-color:var(--red);flex-shrink:0;" />
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:.92em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.title}</div>
+          <div style="font-size:.78em;color:var(--text3);font-family:'JetBrains Mono',monospace;">${regNo}　${it.author || ''}</div>
+        </div>
+      </label>`;
+  }).join('');
+
+  updateScannedDeleteBtn();
+}
+
+function toggleScannedSelect(scanId, checked) {
+  if (checked) _scannedSelected.add(scanId);
+  else _scannedSelected.delete(scanId);
+  updateScannedDeleteBtn();
+}
+
+function updateScannedDeleteBtn() {
+  const btn = document.getElementById('scannedDeleteBtn');
+  const n = _scannedSelected.size;
+  btn.textContent = `🗑 選択した${n}件のスキャンを取り消す`;
+  btn.disabled = n === 0;
+  btn.style.opacity = n === 0 ? '.5' : '1';
+}
+
+async function deleteSelectedScans() {
+  const ids = [..._scannedSelected];
+  if (ids.length === 0) return;
+  if (!confirm(`${ids.length}件のスキャン記録を取り消します。\n（本のデータは消えません。「未スキャン」に戻るだけです）\nよろしいですか？`)) return;
+
+  const { error } = await db.from('inventory_scanned')
+    .delete()
+    .in('id', ids);
+
+  if (error) {
+    alert('取り消しに失敗しました: ' + error.message);
+    return;
+  }
+
+  // 実数を数え直して反映
+  invScanned = await countSessionScans(currentSessionId);
+  await db.from('inventory_sessions')
+    .update({ scanned_count: invScanned })
+    .eq('id', currentSessionId);
+  updateInvUI();
+  if (!invIsTestMode) updateMainSessionProgress();
+
+  // 一覧から削除した分を除いて再描画
+  _scannedListItems = _scannedListItems.filter(it => !_scannedSelected.has(it.scanId));
+  _scannedListOffset = Math.max(0, _scannedListOffset - ids.length);
+  _scannedSelected = new Set();
+  renderScannedList();
+}
+
 // セッションの実スキャン数をDBから数える（複数端末間のズレ防止）
 async function countSessionScans(sessionId) {
   if (!sessionId) return 0;
