@@ -2418,7 +2418,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix7（バーコード・番号で除籍機能 追加版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-06-10-fix8（点検中の別冊登録 対応版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -4932,6 +4932,8 @@ async function handleInvScan() {
   const invBooks = await findBooksByISBN(val, currentSchoolCd);
 
   const proceedInvScan = async (book) => {
+    // 直前スキャン情報を保持（「登録番号が違う」ボタン用）
+    window._invLastScan = { book, isbn: val };
     // 登録済み → 確認済み
     // 2回スキャン防止：既にスキャン済みか確認
     if (currentSessionId) {
@@ -4939,7 +4941,9 @@ async function handleInvScan() {
         .select('id').eq('session_id', currentSessionId).eq('book_id', book.id).limit(1);
       if (already && already.length > 0) {
         const regNo = book.registration_no ? `（登録番号：${book.registration_no}）` : '';
-        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div><div class="fb-title">スキャン済みです</div><div class="fb-body">${book.title}${regNo}</div></div></div>`;
+        fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">⚠️</div><div style="flex:1;"><div class="fb-title">スキャン済みです</div><div class="fb-body">${book.title}${regNo}</div>
+          <div style="margin-top:6px;"><button onclick="invDifferentCopy(false)" style="font-size:.8em;background:var(--bg4);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:3px 10px;cursor:pointer;">📌 手元の本は登録番号が違う → 別の1冊として登録</button></div>
+        </div></div>`;
         addInvLog(t, book.title + regNo + ' ※スキャン済み', 'warn');
         document.getElementById('invIsbn').focus();
         return;
@@ -4977,7 +4981,9 @@ async function handleInvScan() {
       <div style="flex:1;">
         <div class="fb-title">確認済み</div>
         <div class="fb-body">${book.title}${regNoLabel}</div>
-        <div style="margin-top:6px;">${yearBadge}</div>
+        <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${yearBadge}
+          <button onclick="invDifferentCopy(true)" style="font-size:.8em;background:var(--bg4);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:3px 10px;cursor:pointer;">📌 登録番号が違う → 別の1冊として登録</button>
+        </div>
       </div>
     </div>`;
     addInvLog(t, book.title + regNoLabel, 'ok');
@@ -5004,11 +5010,52 @@ async function handleInvScan() {
     fb.innerHTML = `<div class="feedback ok"><div class="fb-icon">📚</div><div><div class="fb-title">${invBooks.length}冊あります。どれですか？</div><div class="fb-body">${invBooks[0].title}</div></div></div>`;
     showMultiBookModal(invBooks, val, 'inv',
       async (book) => { await proceedInvScan(book); },
-      null
+      (isbn) => {
+        // 一覧のどれとも登録番号が合わない → 既存の書誌情報を流用して新規登録
+        const b = invBooks[0];
+        showRegisterModal(isbn, {
+          title: b.title, author: b.author, publisher: b.publisher, price: b.price,
+        }, null, 'inv');
+      }
     );
   }
 
   input.focus();
+}
+
+// 「手元の本は登録番号が違う」→ 直前の確認を取り消して別の1冊として登録
+// undoScan=true: 直前に付けた確認済み記録を取り消す（誤記録のため）
+// undoScan=false: 取り消しはしない（以前のスキャンは本物のため）
+async function invDifferentCopy(undoScan) {
+  const last = window._invLastScan;
+  if (!last) return;
+  const fb = document.getElementById('invFeedback');
+
+  if (undoScan && currentSessionId) {
+    try {
+      await db.from('inventory_scanned').delete()
+        .eq('session_id', currentSessionId)
+        .eq('book_id', last.book.id);
+      invScanned = Math.max(0, invScanned - 1);
+      await db.from('inventory_sessions')
+        .update({ scanned_count: invScanned })
+        .eq('id', currentSessionId);
+      updateInvUI();
+      if (!invIsTestMode) updateMainSessionProgress();
+    } catch (e) {
+      console.warn('確認記録の取り消しに失敗:', e);
+    }
+  }
+
+  if (fb) fb.innerHTML = `<div class="feedback warn" style="border-color:var(--blue);background:var(--blue-dim)"><div class="fb-icon">📚</div><div><div class="fb-title">別の1冊として登録します</div><div class="fb-body">${last.book.title}</div><div class="fb-isbn">${last.isbn}</div></div></div>`;
+
+  // 既存レコードの書誌情報を流用して登録フォームを開く（登録番号は手入力）
+  showRegisterModal(last.isbn, {
+    title: last.book.title,
+    author: last.book.author,
+    publisher: last.book.publisher,
+    price: last.book.price,
+  }, null, 'inv');
 }
 
 document.getElementById('invIsbn').addEventListener('keydown', e => { if (e.key === 'Enter') handleInvScan(); });
