@@ -2418,7 +2418,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix8（点検中の別冊登録 対応版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-06-10-fix9（複数端末同期 修正版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -4495,6 +4495,16 @@ function toReiwa(year) {
 }
 
 // 点検タブに切り替えたときに本番セッションをロード
+// セッションの実スキャン数をDBから数える（複数端末間のズレ防止）
+async function countSessionScans(sessionId) {
+  if (!sessionId) return 0;
+  const { count, error } = await db.from('inventory_scanned')
+    .select('*', { count: 'exact', head: true })
+    .eq('session_id', sessionId);
+  if (error) { console.warn('スキャン数の取得に失敗:', error); return invScanned; }
+  return count || 0;
+}
+
 async function checkActiveSession() {
   const fy = getCurrentFiscalYear();
   const sessionName = `令和${toReiwa(fy)}年度 蔵書点検`;
@@ -4507,12 +4517,13 @@ async function checkActiveSession() {
 
   try {
     // 本番セッションを探す（is_test=false、当該年度）
+    // ※最初に作られたセッションに全端末が合流する（古い順で取得）
     const { data, error: sessErr } = await db.from('inventory_sessions')
       .select('*')
       .eq('school_cd', currentSchoolCd)
       .eq('fiscal_year', fy)
       .eq('is_test', false)
-      .order('started_at', { ascending: false })
+      .order('started_at', { ascending: true })
       .limit(1);
 
     if (sessErr) throw sessErr;
@@ -4529,7 +4540,7 @@ async function checkActiveSession() {
     if (data && data.length > 0) {
       const s = data[0];
       currentSessionId = s.id;
-      invScanned = s.scanned_count || 0;
+      invScanned = await countSessionScans(s.id);
       const date = new Date(s.started_at).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
       if (metaEl) metaEl.textContent = `${date}開始・進行中`;
       if (btn) btn.textContent = '▶ 点検を続ける';
@@ -4569,11 +4580,32 @@ async function joinOrStartMainSession() {
   const fy = getCurrentFiscalYear();
 
   if (currentSessionId) {
-    // 既存セッションに参加
+    // 既存セッションに参加（実スキャン数を取り直してから）
     invIsTestMode = false;
+    invScanned = await countSessionScans(currentSessionId);
     enterInvActive();
+    updateInvUI();
   } else {
-    // 新規本番セッション作成
+    // 作成前にDBで既存セッションを再確認（セッションの二重作成防止）
+    const { data: existing } = await db.from('inventory_sessions')
+      .select('*')
+      .eq('school_cd', currentSchoolCd)
+      .eq('fiscal_year', fy)
+      .eq('is_test', false)
+      .order('started_at', { ascending: true })
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      // 既存セッションが見つかったので合流
+      currentSessionId = existing[0].id;
+      invScanned = await countSessionScans(currentSessionId);
+      invIsTestMode = false;
+      enterInvActive();
+      updateInvUI();
+      return;
+    }
+
+    // 本当に存在しない場合のみ新規作成
     const sessionName = `令和${toReiwa(fy)}年度 蔵書点検`;
     const { data, error } = await db.from('inventory_sessions').insert({
       school_cd:     currentSchoolCd,
@@ -4898,7 +4930,7 @@ async function registerHomeBook() {
             book_id: newBook.id,
             school_cd: currentSchoolCd,
           }, { onConflict: 'session_id,book_id' });
-          invScanned++;
+          invScanned = await countSessionScans(currentSessionId);
           await db.from('inventory_sessions')
             .update({ scanned_count: invScanned })
             .eq('id', currentSessionId);
@@ -4949,16 +4981,19 @@ async function handleInvScan() {
         return;
       }
     }
-    invScanned++;
     if (currentSessionId) {
       await db.from('inventory_scanned').upsert({
         session_id: currentSessionId,
         book_id: book.id,
         school_cd: currentSchoolCd,
       }, { onConflict: 'session_id,book_id' });
+      // 実数を数え直して反映（他端末のスキャン分を上書きしない）
+      invScanned = await countSessionScans(currentSessionId);
       await db.from('inventory_sessions')
         .update({ scanned_count: invScanned })
         .eq('id', currentSessionId);
+    } else {
+      invScanned++;
     }
     if (currentShelfId && !invIsTestMode) {
       await db.from('books').update({ shelf_id: currentShelfId }).eq('id', book.id);
@@ -5036,7 +5071,7 @@ async function invDifferentCopy(undoScan) {
       await db.from('inventory_scanned').delete()
         .eq('session_id', currentSessionId)
         .eq('book_id', last.book.id);
-      invScanned = Math.max(0, invScanned - 1);
+      invScanned = await countSessionScans(currentSessionId);
       await db.from('inventory_sessions')
         .update({ scanned_count: invScanned })
         .eq('id', currentSessionId);
