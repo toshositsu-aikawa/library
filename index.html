@@ -6517,7 +6517,6 @@ async function exportBackupExcel() {
     const { data, error } = await db.from('books')
       .select('registration_no, title, author, publisher, isbn, category, language, delivery_date, purchase_fiscal_year, price, copies, is_donated, donated_by, status, registered_at, shelf_id, shelves(name, rooms(name))')
       .eq('school_cd', currentSchoolCd)
-      .order('registration_no', { nullsFirst: false })
       .range(from, from + PAGE - 1);
     if (error || !data || data.length === 0) break;
     allBooks = allBooks.concat(data);
@@ -6526,6 +6525,13 @@ async function exportBackupExcel() {
   }
 
   if (btn) { btn.textContent = '💾 蔵書データをExcel出力'; btn.disabled = false; }
+
+  // 全件取得後に登録番号を数値順でソート
+  allBooks.sort((a, b) => {
+    const na = parseInt(a.registration_no) || 0;
+    const nb = parseInt(b.registration_no) || 0;
+    return na - nb;
+  });
 
   if (allBooks.length === 0) {
     alert('蔵書データがありません');
