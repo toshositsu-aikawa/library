@@ -2442,7 +2442,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix10（スキャン取り消し機能 追加版）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-06-10-fix11（SheetJS CDN修正）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -6333,7 +6333,7 @@ async function handleImportFile(input) {
   if (!window.XLSX) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+      s.src = 'https://toshositsu-aikawa.github.io/library/xlsx.full.min.js';
       s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
@@ -6536,7 +6536,7 @@ async function exportBackupExcel() {
   if (!window.XLSX) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+      s.src = 'https://toshositsu-aikawa.github.io/library/xlsx.full.min.js';
       s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
@@ -6609,7 +6609,7 @@ async function exportWithdrawExcel() {
   if (!window.XLSX) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+      s.src = 'https://toshositsu-aikawa.github.io/library/xlsx.full.min.js';
       s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
