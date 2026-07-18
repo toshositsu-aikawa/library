@@ -1477,7 +1477,11 @@ html, body {
       <!-- スキャン履歴 -->
       <div class="section-header-row" style="display:flex;justify-content:space-between;align-items:center;">
         <div class="section-title-text">最近のスキャン</div>
-        <button onclick="openScannedListModal()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📋 一覧・取り消し</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          <button onclick="openRegNoImportModal()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📥 番号インポート</button>
+          <button onclick="exportScannedRegNos()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📤 番号出力</button>
+          <button onclick="openScannedListModal()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📋 一覧・取り消し</button>
+        </div>
       </div>
       <div class="card">
         <div class="scan-log" id="invLog">
@@ -1800,6 +1804,12 @@ html, body {
           </div>
           <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">TAK-00001 〜 TAK-00020（20枚）</div>
           <button onclick="printBookBarcodesSeq()" style="width:100%;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ バーコードを印刷</button>
+
+          <div style="border-top:1px dashed var(--border);margin-top:14px;padding-top:12px;">
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px;">🔗 登録済みの本のラベル発行（紐付き印刷）</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">ISBNのない本に独自バーコードを採番して印刷します。蔵書点検の「番号インポート」で確認された本も自動抽出できます。ラベルには登録番号・書名を併記します。</div>
+            <button onclick="openLinkedLabelModal()" style="width:100%;padding:12px;background:var(--blue);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;">🏷️ 対象の本を選んで印刷</button>
+          </div>
         </div>
 
         <!-- ログイン用バーコード -->
@@ -2210,6 +2220,95 @@ html, body {
   </div>
 </div>
 
+<!-- スキャン済み登録番号エクスポートモーダル -->
+<div class="modal-overlay" id="regNoExportModal" onclick="closeModalOutside(event,'regNoExportModal')">
+  <div class="modal" style="max-width:480px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <div class="modal-title">📤 スキャン済み番号の出力</div>
+      <button class="modal-close" onclick="closeModal('regNoExportModal')">✕</button>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;">
+      <div style="font-size:.85em;color:var(--text2);margin-bottom:10px;">
+        この点検セッションでスキャン済みの本の登録番号一覧です。「コピー」して蔵書点検スプレッドシートの「入力」シートに貼り付けると、一括で照合できます。
+      </div>
+      <div id="regNoExportStatus" style="text-align:center;color:var(--text3);padding:8px;font-size:13px;"></div>
+      <div id="regNoExportBody" style="display:none;">
+        <div id="regNoExportCount" style="font-size:.85em;font-weight:700;margin-bottom:6px;"></div>
+        <textarea id="regNoExportText" readonly
+          style="width:100%;height:200px;font-family:'JetBrains Mono',monospace;font-size:.85em;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:10px;padding:10px;resize:none;box-sizing:border-box;"></textarea>
+        <button class="btn btn-success" id="regNoCopyBtn" onclick="copyRegNoExport()"
+          style="width:100%;margin-top:10px;font-weight:700;">📋 番号をコピー（貼り付け用）</button>
+        <button class="btn btn-ghost" onclick="downloadRegNoExport()"
+          style="width:100%;margin-top:8px;">💾 テキストファイルで保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 登録番号インポートモーダル（スプレッドシート→点検セッション） -->
+<div class="modal-overlay" id="regNoImportModal" onclick="closeModalOutside(event,'regNoImportModal')">
+  <div class="modal" style="max-width:520px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <div class="modal-title">📥 番号インポート</div>
+      <button class="modal-close" onclick="closeModal('regNoImportModal')">✕</button>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;">
+      <div style="font-size:.85em;color:var(--text2);margin-bottom:10px;">
+        スプレッドシート「入力」シートの登録番号をコピーして貼り付けてください。
+        照合結果を確認してから、この点検セッションの「確認済み」として記録します。
+      </div>
+      <textarea id="regNoImportText"
+        placeholder="登録番号を貼り付け（改行・カンマ・スペース区切りOK）"
+        style="width:100%;height:120px;font-family:'JetBrains Mono',monospace;font-size:.9em;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:10px;padding:10px;resize:vertical;box-sizing:border-box;"></textarea>
+      <button class="btn" onclick="previewRegNoImport()" id="regNoImportPreviewBtn"
+        style="width:100%;margin-top:10px;background:var(--blue);color:#fff;font-weight:700;">🔍 照合する（プレビュー）</button>
+      <div id="regNoImportPreview" style="margin-top:12px;"></div>
+      <button class="btn btn-success" onclick="commitRegNoImport()" id="regNoImportCommitBtn"
+        style="width:100%;margin-top:10px;font-weight:700;display:none;"></button>
+    </div>
+  </div>
+</div>
+
+<!-- 紐付きラベル発行モーダル（登録済みの本にバーコードを発行） -->
+<div class="modal-overlay" id="linkedLabelModal" onclick="closeModalOutside(event,'linkedLabelModal')">
+  <div class="modal" style="max-width:560px;max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <div class="modal-title">🏷️ 紐付きラベル発行</div>
+      <button class="modal-close" onclick="closeModal('linkedLabelModal')">✕</button>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+      <div style="font-size:.82em;color:var(--text2);margin-bottom:10px;">
+        登録済みの本のバーコードラベルを印刷します。ISBNのない本には独自バーコード（<span id="labelAbbrPreview" style="font-family:monospace;"></span>-xxxxx）を採番して本のデータに紐付けます。
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="btn" onclick="loadLabelCandidates('import')" style="flex:1;font-size:.82em;background:var(--bg3);color:var(--text);border:1px solid var(--border2);">📥 今回インポートで<br>確認された本</button>
+        <button class="btn" onclick="loadLabelCandidates('noisbn')" style="flex:1;font-size:.82em;background:var(--bg3);color:var(--text);border:1px solid var(--border2);">📚 ISBNなしの本<br>すべて</button>
+      </div>
+      <div id="labelCandStatus" style="text-align:center;color:var(--text3);font-size:13px;padding:6px;"></div>
+      <div id="labelCandHeader" style="display:none;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <label style="font-size:.82em;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="labelCandAll" checked onchange="toggleAllLabelCands(this.checked)" style="width:16px;height:16px;" /> 全選択
+        </label>
+        <div id="labelCandCount" style="font-size:.82em;color:var(--text3);"></div>
+      </div>
+      <div id="labelCandList" style="flex:1;min-height:60px;"></div>
+      <div style="position:sticky;bottom:0;background:var(--bg2);padding-top:10px;margin-top:8px;border-top:1px solid var(--border);">
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+          <select id="labelSheetPreset" class="form-input" style="flex:1;font-size:.82em;">
+            <option value="a4-24">A4ラベル24面（70×33.9mm・3列×8行）</option>
+            <option value="cards">普通紙（枠線つき・切って貼る）</option>
+          </select>
+          <label style="font-size:.78em;color:var(--text3);white-space:nowrap;">開始位置
+            <input type="number" id="labelStartPos" value="1" min="1" max="24" class="form-input" style="width:56px;padding:6px;font-size:.9em;margin-left:4px;" />
+          </label>
+        </div>
+        <button class="btn btn-success" id="labelPrintBtn" onclick="printLinkedLabels()"
+          style="width:100%;font-weight:700;" disabled>🖨️ 選択した0件のラベルを印刷</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- バーコード・番号で除籍モーダル -->
 <div class="modal-overlay" id="withdrawScanModal" onclick="closeModalOutside(event,'withdrawScanModal')">
   <div class="modal" style="max-width:520px;">
@@ -2442,7 +2541,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-06-10-fix11（SheetJS CDN修正）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-07-12-fix12（番号出力・番号インポート・紐付きラベル印刷）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -3271,12 +3370,23 @@ async function onCategoryChange(category, currentLanguage = '') {
 // ============================================================
 async function loadJsBarcode() {
   if (window.JsBarcode) return;
-  await new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
-    s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
-  });
+  // CDNブロック対策：SheetJSと同様にGitHub Pages上のローカルコピーを優先し、CDNへフォールバック
+  const sources = [
+    'https://toshositsu-aikawa.github.io/library/JsBarcode.all.min.js',
+    'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js',
+  ];
+  for (const src of sources) {
+    try {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+      if (window.JsBarcode) return;
+    } catch (e) { /* 次のソースを試す */ }
+  }
+  throw new Error('バーコードライブラリ（JsBarcode）を読み込めませんでした');
 }
 
 // 利用者カード連番プレビュー更新
@@ -3328,10 +3438,11 @@ async function printUserCards() {
 
 // バーコード開始番号を自動設定（既存の最大番号+1）
 async function autoSetBarcodeStartNum() {
+  const abbr = getSchoolAbbr(currentSchoolCd);  // 修正：'AIK-%'固定だったのを学校ごとの略称に
   const { data } = await db.from('books')
     .select('isbn')
     .eq('school_cd', currentSchoolCd)
-    .like('isbn', 'AIK-%')
+    .like('isbn', abbr + '-%')
     .order('isbn', { ascending: false })
     .limit(1);
 
@@ -3353,7 +3464,7 @@ async function printBookBarcodesSeq() {
   const startNum = parseInt(document.getElementById('barcodeStartNum').value) || 1;
   const count = Math.min(parseInt(document.getElementById('barcodePrintCount').value) || 20, 200);
   await loadJsBarcode();
-  const abbr = getSchoolAbbr(loginSchoolCd);
+  const abbr = getSchoolAbbr(currentSchoolCd);  // 修正：loginSchoolCd→currentSchoolCd（自動採番と統一）
   const ids = [];
   for (let i = 0; i < count; i++) {
     ids.push(abbr + '-' + String(startNum + i).padStart(5, '0'));
@@ -3362,7 +3473,7 @@ async function printBookBarcodesSeq() {
   // 登録済みチェック
   const { data: existing } = await db.from('books')
     .select('isbn')
-    .eq('school_cd', loginSchoolCd)
+    .eq('school_cd', currentSchoolCd)
     .in('isbn', ids);
   const registeredIds = (existing || []).map(b => b.isbn);
 
@@ -3467,6 +3578,340 @@ function openPrintWindow(ids, title, type) {
     }
   });
 <\/script>
+</body></html>`);
+  win.document.close();
+}
+
+// ============================================================
+// 紐付きラベル発行（登録済みの本にバーコードを発行・案C）
+// ============================================================
+let _labelCands = []; // {id, regNo, title, isbn, kind:'new'|'isbn'|'local', checked}
+
+function openLinkedLabelModal() {
+  _labelCands = [];
+  document.getElementById('labelCandList').innerHTML = '';
+  document.getElementById('labelCandStatus').textContent = '上のボタンで対象の本を読み込んでください';
+  document.getElementById('labelCandHeader').style.display = 'none';
+  const abbrEl = document.getElementById('labelAbbrPreview');
+  if (abbrEl) abbrEl.textContent = getSchoolAbbr(currentSchoolCd);
+  updateLabelPrintBtn();
+  openModal('linkedLabelModal');
+}
+
+async function loadLabelCandidates(mode) {
+  const statusEl = document.getElementById('labelCandStatus');
+  const listEl = document.getElementById('labelCandList');
+  _labelCands = [];
+  listEl.innerHTML = '';
+  document.getElementById('labelCandHeader').style.display = 'none';
+  updateLabelPrintBtn();
+
+  try {
+    let books = [];
+    if (mode === 'import') {
+      // 今回の点検セッションで「番号インポート」により確認された本
+      if (!currentSessionId) {
+        statusEl.textContent = '点検セッションがありません。点検タブでセッションを開始してください';
+        return;
+      }
+      statusEl.textContent = '⏳ インポート記録を取得中…';
+      let bookIds = [];
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await db.from('inventory_scanned')
+          .select('book_id')
+          .eq('session_id', currentSessionId)
+          .eq('source', 'import')
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) {
+          if (/source/i.test(error.message || '')) {
+            statusEl.innerHTML = '⚠️ この機能にはSupabaseでsource列の追加が必要です。<br><code style="font-size:.9em;">alter table inventory_scanned add column source text default \'scan\';</code>';
+            return;
+          }
+          throw error;
+        }
+        if (!data || data.length === 0) break;
+        bookIds = bookIds.concat(data.map(r => r.book_id));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      if (bookIds.length === 0) {
+        statusEl.textContent = 'このセッションに番号インポートの記録がありません';
+        return;
+      }
+      statusEl.textContent = `⏳ 本の情報を取得中…（対象${bookIds.length}冊）`;
+      const uniq = [...new Set(bookIds)];
+      for (let i = 0; i < uniq.length; i += 500) {
+        const { data, error } = await db.from('books')
+          .select('id, registration_no, title, isbn, status')
+          .in('id', uniq.slice(i, i + 500));
+        if (error) throw error;
+        books = books.concat((data || []).filter(b => b.status !== 'withdrawn'));
+      }
+    } else {
+      // ISBNが空の登録済みの本すべて
+      statusEl.textContent = '⏳ ISBNなしの本を取得中…';
+      const fetchAll = async (applyFilter) => {
+        let out = [];
+        let from = 0;
+        const PAGE = 1000;
+        while (true) {
+          let q = db.from('books')
+            .select('id, registration_no, title, isbn, status')
+            .eq('school_cd', currentSchoolCd)
+            .neq('status', 'withdrawn')
+            .order('id', { ascending: true })
+            .range(from, from + PAGE - 1);
+          q = applyFilter(q);
+          const { data, error } = await q;
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          out = out.concat(data);
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+        return out;
+      };
+      const nullBooks  = await fetchAll(q => q.is('isbn', null));
+      const emptyBooks = await fetchAll(q => q.eq('isbn', ''));
+      books = nullBooks.concat(emptyBooks);
+    }
+
+    if (books.length === 0) {
+      statusEl.textContent = '対象の本が見つかりませんでした';
+      return;
+    }
+
+    // 分類：新規採番／ISBN再印刷／独自バーコード済み
+    _labelCands = books.map(b => {
+      const isbn = String(b.isbn || '').trim();
+      let kind;
+      if (isLocalBarcode(isbn)) kind = 'local';
+      else if (isbn !== '') kind = 'isbn';
+      else kind = 'new';
+      return {
+        id: b.id,
+        regNo: String(b.registration_no || '').trim(),
+        title: b.title || '（書名不明）',
+        isbn: isbn,
+        kind: kind,
+        checked: kind !== 'local', // 既に独自バーコードがある本は初期OFF
+      };
+    });
+    _labelCands.sort((a, b) => (parseInt(a.regNo) || 0) - (parseInt(b.regNo) || 0));
+
+    statusEl.textContent = '';
+    document.getElementById('labelCandHeader').style.display = 'flex';
+    document.getElementById('labelCandAll').checked = true;
+    renderLabelCandidates();
+  } catch (err) {
+    console.error('ラベル対象の取得失敗:', err);
+    statusEl.textContent = '❌ 取得に失敗しました: ' + (err.message || err);
+  }
+}
+
+function renderLabelCandidates() {
+  const listEl = document.getElementById('labelCandList');
+  const KIND_BADGE = {
+    new:   '<span style="font-size:.7em;background:var(--green);color:#000;border-radius:6px;padding:1px 6px;font-weight:700;">新規採番</span>',
+    isbn:  '<span style="font-size:.7em;background:var(--blue);color:#fff;border-radius:6px;padding:1px 6px;font-weight:700;">ISBN再印刷</span>',
+    local: '<span style="font-size:.7em;background:var(--bg4);color:var(--text2);border-radius:6px;padding:1px 6px;font-weight:700;">独自バーコード済</span>',
+  };
+  listEl.innerHTML = _labelCands.map((c, i) => `
+    <label class="list-item" style="border-radius:10px;background:var(--bg3);margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:10px;padding:8px 12px;">
+      <input type="checkbox" ${c.checked ? 'checked' : ''} onchange="toggleLabelCand(${i}, this.checked)"
+        style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;" />
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.title}</div>
+        <div style="font-size:.75em;color:var(--text3);font-family:'JetBrains Mono',monospace;">
+          ${c.regNo ? `登録番号：${c.regNo}` : '<span style="color:var(--gold);">登録番号なし</span>'}
+          ${c.kind !== 'new' ? '　' + c.isbn : ''}
+        </div>
+      </div>
+      ${KIND_BADGE[c.kind]}
+    </label>`).join('');
+  const counts = _labelCands.reduce((a, c) => { a[c.kind] = (a[c.kind] || 0) + 1; return a; }, {});
+  document.getElementById('labelCandCount').textContent =
+    `全${_labelCands.length}冊（新規採番${counts.new || 0}／ISBN再印刷${counts.isbn || 0}／済${counts.local || 0}）`;
+  updateLabelPrintBtn();
+}
+
+function toggleLabelCand(idx, checked) {
+  if (_labelCands[idx]) _labelCands[idx].checked = checked;
+  updateLabelPrintBtn();
+}
+
+function toggleAllLabelCands(checked) {
+  _labelCands.forEach(c => { c.checked = checked; });
+  renderLabelCandidates();
+}
+
+function updateLabelPrintBtn() {
+  const btn = document.getElementById('labelPrintBtn');
+  if (!btn) return;
+  const n = _labelCands.filter(c => c.checked).length;
+  btn.textContent = `🖨️ 選択した${n}件のラベルを印刷`;
+  btn.disabled = n === 0;
+  btn.style.opacity = n === 0 ? '.5' : '1';
+}
+
+// 学校略称の既存最大番号+1を取得
+async function getNextLocalBarcodeNum(abbr) {
+  const { data, error } = await db.from('books')
+    .select('isbn')
+    .eq('school_cd', currentSchoolCd)
+    .like('isbn', abbr + '-%')
+    .order('isbn', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  if (data && data.length > 0) {
+    const parts = data[0].isbn.split('-');
+    return (parseInt(parts[parts.length - 1]) || 0) + 1;
+  }
+  return 1;
+}
+
+async function printLinkedLabels() {
+  const btn = document.getElementById('labelPrintBtn');
+  const selected = _labelCands.filter(c => c.checked);
+  if (selected.length === 0) return;
+  const newOnes = selected.filter(c => c.kind === 'new');
+  const abbr = getSchoolAbbr(currentSchoolCd);
+
+  if (newOnes.length > 0) {
+    const ok = confirm(
+      `${newOnes.length}冊に新しい独自バーコード（${abbr}-xxxxx）を採番し、本のデータに紐付けます。\n` +
+      `※印刷後、ラベルは書名・登録番号を確認しながら該当の本に貼ってください。\n\nよろしいですか？`
+    );
+    if (!ok) return;
+  }
+
+  btn.disabled = true;
+  try {
+    await loadJsBarcode();
+
+    // ① 新規採番分：連番を割り当ててDBに書き込み
+    if (newOnes.length > 0) {
+      let num = await getNextLocalBarcodeNum(abbr);
+      const failed = [];
+      for (let i = 0; i < newOnes.length; i++) {
+        const c = newOnes[i];
+        const code = abbr + '-' + String(num++).padStart(5, '0');
+        btn.textContent = `⏳ 紐付け中…（${i + 1} / ${newOnes.length}）`;
+        const { error } = await db.from('books')
+          .update({ isbn: code })
+          .eq('id', c.id)
+          .eq('school_cd', currentSchoolCd);
+        if (error) { failed.push(c); console.warn('紐付け失敗:', c.regNo, error); num--; continue; }
+        c.isbn = code;
+        c.kind = 'local';
+      }
+      if (failed.length > 0) {
+        alert(`⚠️ ${failed.length}冊の紐付けに失敗したため、その分は印刷から除外します。\n再度お試しください。`);
+        failed.forEach(f => { f.checked = false; });
+      }
+    }
+
+    // ② 印刷対象（紐付けに成功した本のみ）
+    const printItems = selected.filter(c => c.checked && c.isbn);
+    if (printItems.length === 0) { renderLabelCandidates(); return; }
+
+    // ③ バーコードSVGをこの画面側で生成（印刷ウィンドウにスクリプト不要＝CDNブロックの影響なし）
+    const serializer = new XMLSerializer();
+    const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    document.body.appendChild(tmp);
+    const svgs = printItems.map(c => {
+      try {
+        JsBarcode(tmp, c.isbn, { format: 'CODE128', width: 1.6, height: 36, displayValue: false, margin: 0 });
+        return serializer.serializeToString(tmp);
+      } catch (e) { return ''; }
+    });
+    document.body.removeChild(tmp);
+
+    // ④ 印刷ウィンドウ生成
+    const preset = document.getElementById('labelSheetPreset').value;
+    const startPos = Math.max(1, Math.min(24, parseInt(document.getElementById('labelStartPos').value) || 1));
+    buildLabelPrintWindow(printItems, svgs, preset, startPos);
+
+    renderLabelCandidates();
+  } catch (err) {
+    console.error('ラベル印刷失敗:', err);
+    alert('ラベル印刷に失敗しました: ' + (err.message || err));
+  } finally {
+    updateLabelPrintBtn();
+  }
+}
+
+function buildLabelPrintWindow(items, svgs, preset, startPos) {
+  const schoolName = (SCHOOLS.find(s => s.cd === currentSchoolCd) || {}).name || '';
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const cellHtml = (c, svg) => `
+    <div class="cell">
+      <div class="l1">${esc(schoolName)}${c.regNo ? '　登録番号 ' + esc(c.regNo) : ''}</div>
+      <div class="bc">${svg}</div>
+      <div class="l2">${esc(c.isbn)}</div>
+      <div class="l3">${esc(c.title)}</div>
+    </div>`;
+
+  let bodyHtml = '';
+  let style = '';
+
+  if (preset === 'a4-24') {
+    // A4ラベル24面（70×33.9mm・3列×8行・左右余白なし・上下13.35mm）※エーワン等の標準規格
+    const cells = [];
+    for (let i = 0; i < startPos - 1; i++) cells.push('<div class="cell empty"></div>');
+    items.forEach((c, i) => cells.push(cellHtml(c, svgs[i])));
+    const sheets = [];
+    for (let i = 0; i < cells.length; i += 24) {
+      sheets.push(`<div class="sheet">${cells.slice(i, i + 24).join('')}</div>`);
+    }
+    bodyHtml = sheets.join('');
+    style = `
+      @page { size: A4; margin: 0; }
+      .sheet { width:210mm; height:296.5mm; padding-top:13.35mm; box-sizing:border-box;
+               display:grid; grid-template-columns:repeat(3, 70mm); grid-auto-rows:33.9mm;
+               page-break-after:always; margin:0 auto; background:#fff; }
+      .cell { box-sizing:border-box; padding:1.5mm 3mm; display:flex; flex-direction:column;
+              align-items:center; justify-content:center; overflow:hidden; }
+      @media screen { .sheet { outline:1px solid #ccc; margin-bottom:10px; }
+                      .cell { outline:1px dashed #eee; } }`;
+  } else {
+    // 普通紙（枠線つき・切って貼る）
+    bodyHtml = `<div class="grid">${items.map((c, i) => cellHtml(c, svgs[i])).join('')}</div>`;
+    style = `
+      .grid { display:flex; flex-wrap:wrap; }
+      .cell { width:70mm; height:33.9mm; box-sizing:border-box; padding:1.5mm 3mm;
+              display:flex; flex-direction:column; align-items:center; justify-content:center;
+              overflow:hidden; border:1px dashed #999; background:#fff; page-break-inside:avoid; }`;
+  }
+
+  const win = window.open('', '_blank', 'width=860,height=640');
+  win.document.write(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>紐付きラベル印刷（${items.length}枚）</title>
+<style>
+  * { margin:0; padding:0; }
+  body { font-family:'Meiryo UI', sans-serif; background:#f5f5f5; }
+  .toolbar { padding:12px 16px; }
+  .toolbar button { padding:10px 24px; background:#2563eb; color:#fff; border:none;
+                    border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; }
+  .toolbar .note { font-size:12px; color:#666; margin-top:6px; }
+  .l1 { font-size:7.5px; color:#333; white-space:nowrap; overflow:hidden; max-width:100%; }
+  .bc { line-height:0; margin:1mm 0 0.5mm; }
+  .bc svg { max-width:60mm; height:9mm; }
+  .l2 { font-family:monospace; font-size:9px; font-weight:700; letter-spacing:0.08em; }
+  .l3 { font-size:7.5px; color:#333; white-space:nowrap; overflow:hidden;
+        text-overflow:ellipsis; max-width:100%; }
+  ${style}
+  @media print { body { background:#fff; } .toolbar { display:none; } }
+</style></head><body>
+<div class="toolbar">
+  <button onclick="window.print()">🖨️ 印刷する（${items.length}枚）</button>
+  <div class="note">※印刷ダイアログで「余白：なし」「倍率：100%」を指定してください。ずれる場合はA4ラベルの品番をご確認ください。</div>
+</div>
+${bodyHtml}
 </body></html>`);
   win.document.close();
 }
@@ -4677,6 +5122,325 @@ async function countSessionScans(sessionId) {
     .eq('session_id', sessionId);
   if (error) { console.warn('スキャン数の取得に失敗:', error); return invScanned; }
   return count || 0;
+}
+
+// ===== スキャン済み登録番号エクスポート（スプレッドシート照合用） =====
+async function exportScannedRegNos() {
+  if (!currentSessionId) {
+    alert('点検セッションがありません。\n点検を開始してからエクスポートしてください。');
+    return;
+  }
+
+  const statusEl = document.getElementById('regNoExportStatus');
+  const bodyEl   = document.getElementById('regNoExportBody');
+  const textEl   = document.getElementById('regNoExportText');
+  const countEl  = document.getElementById('regNoExportCount');
+  textEl.value = '';
+  countEl.textContent = '';
+  bodyEl.style.display = 'none';
+  statusEl.textContent = '⏳ スキャン記録を取得中…';
+  openModal('regNoExportModal');
+
+  try {
+    // ① スキャン記録を全件取得（idは数値の連番なので、id昇順ならページネーションのズレは起きない）
+    let bookIds = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await db.from('inventory_scanned')
+        .select('book_id')
+        .eq('session_id', currentSessionId)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      bookIds = bookIds.concat(data.map(s => s.book_id));
+      statusEl.textContent = `⏳ スキャン記録を取得中…（${bookIds.length}件）`;
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+
+    if (bookIds.length === 0) {
+      statusEl.textContent = 'スキャン記録がありません';
+      return;
+    }
+
+    // 同じ本を複数回スキャンしていても1件にまとめる
+    const uniqueIds = [...new Set(bookIds)];
+
+    // ② 対応する登録番号を取得（URL長制限を避けるため500件ずつ）
+    const regNos = [];
+    let noRegNo = 0;
+    const CHUNK = 500;
+    for (let i = 0; i < uniqueIds.length; i += CHUNK) {
+      statusEl.textContent = `⏳ 登録番号を取得中…（${Math.min(i + CHUNK, uniqueIds.length)} / ${uniqueIds.length}）`;
+      const chunk = uniqueIds.slice(i, i + CHUNK);
+      const { data: books, error } = await db.from('books')
+        .select('id, registration_no')
+        .in('id', chunk);
+      if (error) throw error;
+      const returned = new Set();
+      (books || []).forEach(b => {
+        returned.add(b.id);
+        const r = String(b.registration_no || '').trim();
+        if (r) regNos.push(r); else noRegNo++;
+      });
+      // 削除済み等でbooksに見つからなかった分も「番号なし」として数える
+      noRegNo += chunk.filter(id => !returned.has(id)).length;
+    }
+
+    // ③ 登録番号を数値順にソート（バックアップExcelと同じ方式）
+    regNos.sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+
+    // ④ 結果表示（1行1番号＝スプレッドシートに縦1列で貼り付く形式）
+    textEl.value = regNos.join('\n');
+    statusEl.textContent = '';
+    countEl.textContent = `✅ ${regNos.length}件の登録番号` +
+      (noRegNo > 0 ? `（登録番号なし・不明：${noRegNo}件は含まれません）` : '');
+    bodyEl.style.display = 'block';
+    const copyBtn = document.getElementById('regNoCopyBtn');
+    copyBtn.textContent = '📋 番号をコピー（貼り付け用）';
+    copyBtn.disabled = false;
+  } catch (err) {
+    console.error('登録番号エクスポート失敗:', err);
+    statusEl.textContent = '❌ 取得に失敗しました: ' + (err.message || err);
+  }
+}
+
+async function copyRegNoExport() {
+  const textEl = document.getElementById('regNoExportText');
+  const btn = document.getElementById('regNoCopyBtn');
+  try {
+    await navigator.clipboard.writeText(textEl.value);
+    btn.textContent = '✅ コピーしました！入力シートに貼り付けてください';
+  } catch (e) {
+    // クリップボードAPIが使えない環境向けのフォールバック
+    textEl.focus();
+    textEl.select();
+    textEl.setSelectionRange(0, textEl.value.length);
+    const ok = document.execCommand && document.execCommand('copy');
+    btn.textContent = ok ? '✅ コピーしました！入力シートに貼り付けてください'
+                         : '⚠️ 自動コピー不可。上の枠を長押しして全選択→コピーしてください';
+  }
+  setTimeout(() => { btn.textContent = '📋 番号をコピー（貼り付け用）'; }, 4000);
+}
+
+function downloadRegNoExport() {
+  const text = document.getElementById('regNoExportText').value;
+  if (!text) return;
+  const schoolName = (SCHOOLS.find(s => s.cd === currentSchoolCd) || {}).name || currentSchoolCd;
+  const today = new Date().toLocaleDateString('ja-JP', { year:'numeric', month:'2-digit', day:'2-digit' }).replace(/\//g, '-');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `スキャン済み登録番号_${schoolName}_${today}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+// ===== 登録番号インポート（スプレッドシート → 点検セッション） =====
+// GASのnormalizeIdと同じ仕様："1000.0"→"1000"、" 1000 "→"1000"
+function normalizeRegNo(raw) {
+  const s = String(raw).trim();
+  if (s === '' || s === 'undefined' || s === 'null') return '';
+  const n = Number(s);
+  if (!isNaN(n) && n > 0) return String(Math.round(n));
+  return s;
+}
+
+let _importMatched = [];    // 登録可能：{bookId, regNo, title, alreadyScanned}
+let _importNotFound = [];   // システムに登録がない番号
+let _importDupRecords = []; // 同一番号が複数レコード：{regNo, count}
+let _importWithdrawn = [];  // 除籍済みの本の番号
+
+function openRegNoImportModal() {
+  if (!currentSessionId) {
+    alert('点検セッションがありません。\n点検を開始してからインポートしてください。');
+    return;
+  }
+  document.getElementById('regNoImportText').value = '';
+  document.getElementById('regNoImportPreview').innerHTML = '';
+  document.getElementById('regNoImportCommitBtn').style.display = 'none';
+  openModal('regNoImportModal');
+}
+
+async function previewRegNoImport() {
+  const previewEl = document.getElementById('regNoImportPreview');
+  const commitBtn = document.getElementById('regNoImportCommitBtn');
+  commitBtn.style.display = 'none';
+  _importMatched = []; _importNotFound = []; _importDupRecords = []; _importWithdrawn = [];
+
+  // ① 貼り付けテキストを分解・正規化・重複除去
+  const raw = document.getElementById('regNoImportText').value;
+  const tokens = raw.split(/[\s,、，]+/);
+  const seen = new Set();
+  let inputDup = 0;
+  for (const t of tokens) {
+    const v = normalizeRegNo(t);
+    if (v === '') continue;
+    if (seen.has(v)) { inputDup++; continue; }
+    seen.add(v);
+  }
+  const nos = [...seen];
+  if (nos.length === 0) {
+    previewEl.innerHTML = '<div style="color:var(--red);font-size:.85em;">番号が読み取れませんでした。貼り付け内容を確認してください。</div>';
+    return;
+  }
+
+  previewEl.innerHTML = '<div style="text-align:center;color:var(--text3);font-size:13px;">⏳ 照合中…</div>';
+
+  try {
+    // ② booksを登録番号で照合（URL長制限を避けるため300件ずつ）
+    const regMap = new Map(); // regNo → [book, ...]
+    const CHUNK = 300;
+    for (let i = 0; i < nos.length; i += CHUNK) {
+      const chunk = nos.slice(i, i + CHUNK);
+      const { data, error } = await db.from('books')
+        .select('id, registration_no, title, status')
+        .eq('school_cd', currentSchoolCd)
+        .in('registration_no', chunk);
+      if (error) throw error;
+      (data || []).forEach(b => {
+        const key = normalizeRegNo(b.registration_no);
+        if (!regMap.has(key)) regMap.set(key, []);
+        regMap.get(key).push(b);
+      });
+      previewEl.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:13px;">⏳ 照合中…（${Math.min(i + CHUNK, nos.length)} / ${nos.length}）</div>`;
+    }
+
+    // ③ 分類
+    for (const no of nos) {
+      const books = (regMap.get(no) || []).filter(b => b.status !== 'withdrawn');
+      const withdrawnOnly = (regMap.get(no) || []).length > 0 && books.length === 0;
+      if (withdrawnOnly) { _importWithdrawn.push(no); continue; }
+      if (books.length === 0) { _importNotFound.push(no); continue; }
+      if (books.length > 1) { _importDupRecords.push({ regNo: no, count: books.length }); continue; }
+      _importMatched.push({ bookId: books[0].id, regNo: no, title: books[0].title || '', alreadyScanned: false });
+    }
+
+    // ④ スキャン済みチェック
+    const matchedIds = _importMatched.map(m => m.bookId);
+    const scannedIds = new Set();
+    for (let i = 0; i < matchedIds.length; i += 500) {
+      const chunk = matchedIds.slice(i, i + 500);
+      const { data, error } = await db.from('inventory_scanned')
+        .select('book_id')
+        .eq('session_id', currentSessionId)
+        .in('book_id', chunk);
+      if (error) throw error;
+      (data || []).forEach(r => scannedIds.add(r.book_id));
+    }
+    _importMatched.forEach(m => { m.alreadyScanned = scannedIds.has(m.bookId); });
+
+    // ⑤ プレビュー表示
+    const newCount = _importMatched.filter(m => !m.alreadyScanned).length;
+    const alreadyCount = _importMatched.length - newCount;
+    const sortNum = (a, b) => (parseInt(a) || 0) - (parseInt(b) || 0);
+    _importNotFound.sort(sortNum);
+    _importWithdrawn.sort(sortNum);
+
+    let html = `<div style="background:var(--bg3);border-radius:10px;padding:12px;font-size:.85em;line-height:1.9;">
+      <div>入力番号：<b>${nos.length}件</b>${inputDup > 0 ? `（貼り付け内の重複 ${inputDup}件は1件に統合）` : ''}</div>
+      <div>✅ 確認済みとして登録できる：<b style="color:var(--green);">${newCount}件</b>${alreadyCount > 0 ? `（ほかに既にスキャン済み ${alreadyCount}件）` : ''}</div>
+      <div>❓ システムに登録がない番号：<b style="color:var(--gold);">${_importNotFound.length}件</b></div>
+      ${_importDupRecords.length > 0 ? `<div>⚠️ 同一番号が複数レコード：<b style="color:var(--red);">${_importDupRecords.length}件</b>（自動登録しません・下記参照）</div>` : ''}
+      ${_importWithdrawn.length > 0 ? `<div>🗑 除籍済みの本の番号：<b>${_importWithdrawn.length}件</b>（登録しません）</div>` : ''}
+    </div>`;
+
+    if (_importNotFound.length > 0) {
+      html += `<div style="margin-top:10px;">
+        <div style="font-size:.8em;color:var(--text3);margin-bottom:4px;">❓ 未登録番号（紙台帳との照合対象。コピーして控えてください）</div>
+        <textarea id="importNotFoundText" readonly style="width:100%;height:80px;font-family:'JetBrains Mono',monospace;font-size:.8em;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:8px;padding:8px;box-sizing:border-box;">${_importNotFound.join('\n')}</textarea>
+        <button class="btn btn-ghost" style="width:100%;margin-top:4px;font-size:.8em;" onclick="copyImportNotFound(this)">📋 未登録番号をコピー</button>
+      </div>`;
+    }
+    if (_importDupRecords.length > 0) {
+      html += `<div style="margin-top:10px;font-size:.8em;color:var(--text2);">
+        <div style="color:var(--text3);margin-bottom:4px;">⚠️ 同一番号が複数レコードある番号（点検画面で個別にスキャン・確認してください）</div>
+        <div style="font-family:'JetBrains Mono',monospace;background:var(--bg3);border-radius:8px;padding:8px;">${_importDupRecords.map(d => `${d.regNo}（${d.count}件）`).join('、')}</div>
+      </div>`;
+    }
+    previewEl.innerHTML = html;
+
+    if (newCount > 0) {
+      commitBtn.textContent = `✅ ${newCount}件を「確認済み」として登録する`;
+      commitBtn.disabled = false;
+      commitBtn.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('インポート照合失敗:', err);
+    previewEl.innerHTML = `<div style="color:var(--red);font-size:.85em;">❌ 照合に失敗しました: ${err.message || err}</div>`;
+  }
+}
+
+async function copyImportNotFound(btn) {
+  const text = document.getElementById('importNotFoundText')?.value || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = '✅ コピーしました';
+  } catch (e) {
+    btn.textContent = '⚠️ 枠内を長押しで全選択→コピーしてください';
+  }
+  setTimeout(() => { btn.textContent = '📋 未登録番号をコピー'; }, 3000);
+}
+
+async function commitRegNoImport() {
+  const btn = document.getElementById('regNoImportCommitBtn');
+  const rows = _importMatched.filter(m => !m.alreadyScanned);
+  if (rows.length === 0 || !currentSessionId) return;
+  btn.disabled = true;
+
+  let sourceColumnMissing = false;
+  let done = 0;
+  try {
+    const CHUNK = 500;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      btn.textContent = `⏳ 登録中…（${Math.min(i + CHUNK, rows.length)} / ${rows.length}）`;
+      const chunk = rows.slice(i, i + CHUNK);
+      let payload = chunk.map(m => ({
+        session_id: currentSessionId,
+        book_id: m.bookId,
+        school_cd: currentSchoolCd,
+        source: 'import',
+      }));
+      let { error } = await db.from('inventory_scanned')
+        .upsert(payload, { onConflict: 'session_id,book_id', ignoreDuplicates: true });
+      // source列が未追加の環境向けフォールバック
+      if (error && /source/i.test(error.message || '')) {
+        sourceColumnMissing = true;
+        payload = payload.map(({ source, ...rest }) => rest);
+        ({ error } = await db.from('inventory_scanned')
+          .upsert(payload, { onConflict: 'session_id,book_id', ignoreDuplicates: true }));
+      }
+      if (error) throw error;
+      done += chunk.length;
+    }
+
+    // 実数を数え直して反映（複数端末間のズレ防止・既存方式と同じ）
+    invScanned = await countSessionScans(currentSessionId);
+    await db.from('inventory_sessions')
+      .update({ scanned_count: invScanned })
+      .eq('id', currentSessionId);
+    updateInvUI();
+    if (typeof updateMainSessionProgress === 'function' && !invIsTestMode) updateMainSessionProgress();
+
+    const now = new Date();
+    const t = `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+    addInvLog(t, `【番号インポート】${done}件を確認済みに登録`, 'ok');
+
+    btn.textContent = `✅ ${done}件を登録しました`;
+    if (sourceColumnMissing) {
+      document.getElementById('regNoImportPreview').innerHTML +=
+        `<div style="margin-top:10px;font-size:.78em;color:var(--gold);">⚠️ source列が未追加のため、バーコードスキャンとの区別なしで登録しました。Supabaseで<br><code>alter table inventory_scanned add column source text default 'scan';</code><br>を実行すると、次回からラベル対象の自動抽出が使えます。</div>`;
+    }
+  } catch (err) {
+    console.error('インポート登録失敗:', err);
+    alert('登録に失敗しました: ' + (err.message || err) + `\n（${done}件までは登録済み。同じ内容を再インポートしても二重登録はされません）`);
+    btn.textContent = '✅ もう一度登録する';
+    btn.disabled = false;
+  }
 }
 
 async function checkActiveSession() {
