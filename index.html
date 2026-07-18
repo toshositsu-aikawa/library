@@ -2541,7 +2541,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-07-12-fix12（番号出力・番号インポート・紐付きラベル印刷）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-07-19-fix13（複本分割時のcopies補正）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -5831,7 +5831,7 @@ async function registerHomeBook() {
   const modal = document.getElementById('unregModal');
   if (modal) modal.remove();
 
-  const { isbn, title, author, publisher, price, shelfId, registration_no, context } = pendingBookData;
+  const { isbn, title, author, publisher, price, shelfId, registration_no, context, splitFromBookId } = pendingBookData;
   const isInv = context === 'inv';
   // 結果は「いま見ている画面」に表示する
   const fb = document.getElementById(isInv ? 'invFeedback' : 'homeFeedback');
@@ -5851,6 +5851,17 @@ async function registerHomeBook() {
 
   const { data: newBook, error } = await db.from('books').insert(insertData).select().single();
   pendingBookData = null;
+
+  // fix13：複本の分割元がある場合、元レコードのcopiesを−1（下限1）
+  // これをしないと分割するたびに総所蔵冊数（copies合計）が実態より増え続けてしまう
+  if (!error && splitFromBookId) {
+    try {
+      const { data: origBook } = await db.from('books')
+        .select('copies').eq('id', splitFromBookId).single();
+      const newCopies = Math.max(1, (Number(origBook?.copies) || 1) - 1);
+      await db.from('books').update({ copies: newCopies }).eq('id', splitFromBookId);
+    } catch (e) { console.warn('分割元レコードのcopies更新に失敗:', e); }
+  }
 
   if (error) {
     if (fb) fb.innerHTML = `<div class="feedback warn"><div class="fb-icon">❌</div><div><div class="fb-title">登録失敗</div><div class="fb-body">${error.message}</div></div></div>`;
@@ -6029,6 +6040,9 @@ async function invDifferentCopy(undoScan) {
     publisher: last.book.publisher,
     price: last.book.price,
   }, null, 'inv');
+  // fix13：元レコード（複本がまとめられている可能性）から1冊分切り出したことを記録
+  // → 登録成功時にregisterHomeBookが元レコードのcopiesを−1する
+  if (pendingBookData) pendingBookData.splitFromBookId = last.book.id;
 }
 
 document.getElementById('invIsbn').addEventListener('keydown', e => { if (e.key === 'Enter') handleInvScan(); });
