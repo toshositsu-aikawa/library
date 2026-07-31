@@ -1713,11 +1713,19 @@ html, body {
           </div>
           <div style="color:var(--text3);font-size:18px;">›</div>
         </div>
-        <div class="list-item" onclick="openBulkWithdrawModal()" style="border-radius:10px;background:var(--bg3);">
+        <div class="list-item" onclick="openBulkWithdrawModal()" style="border-radius:10px;background:var(--bg3);margin-bottom:8px;">
           <div class="list-icon" style="font-size:22px;">🔍</div>
           <div class="list-info">
             <div class="list-title">一括除籍候補を検索</div>
             <div class="list-meta">購入から○年以上経った本をリスト化</div>
+          </div>
+          <div style="color:var(--text3);font-size:18px;">›</div>
+        </div>
+        <div class="list-item" onclick="openWithdrawByNoModal()" style="border-radius:10px;background:var(--bg3);">
+          <div class="list-icon" style="font-size:22px;">📋</div>
+          <div class="list-info">
+            <div class="list-title">番号リストで一括除籍</div>
+            <div class="list-meta">登録番号のリストを貼り付けて照合→一括除籍</div>
           </div>
           <div style="color:var(--text3);font-size:18px;">›</div>
         </div>
@@ -2405,6 +2413,45 @@ html, body {
   </div>
 </div>
 
+<!-- 番号リストで一括除籍モーダル -->
+<div class="modal-overlay" id="withdrawByNoModal" onclick="closeModalOutside(event,'withdrawByNoModal')">
+  <div class="modal-sheet" style="max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">📋 番号リストで一括除籍</div>
+      <button class="modal-close" onclick="closeModal('withdrawByNoModal')">✕</button>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;">
+      <div style="font-size:.82em;color:var(--text2);margin-bottom:10px;">
+        除籍が確認できた本の登録番号を貼り付けてください。照合して<b>書名の一覧を確認してから</b>除籍を実行します。
+      </div>
+      <textarea id="wdnoText"
+        placeholder="登録番号を貼り付け（改行・カンマ・スペース区切りOK）"
+        style="width:100%;height:100px;font-family:'JetBrains Mono',monospace;font-size:.9em;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:10px;padding:10px;resize:vertical;box-sizing:border-box;"></textarea>
+      <button class="btn btn-primary" onclick="previewWithdrawByNo()" style="width:100%;margin-top:10px;font-weight:700;">🔍 照合する（プレビュー）</button>
+
+      <div id="wdnoSummary" style="margin-top:12px;"></div>
+      <div id="wdnoList" style="margin-top:8px;"></div>
+
+      <div id="wdnoExecArea" style="display:none;position:sticky;bottom:0;background:var(--bg2);padding-top:10px;margin-top:8px;border-top:1px solid var(--border);">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <select id="wdnoReason" class="form-select" style="flex:1;">
+            <option value="紛失" selected>紛失</option>
+            <option value="老朽化">老朽化</option>
+            <option value="汚損">汚損</option>
+            <option value="破損">破損</option>
+            <option value="その他">その他</option>
+          </select>
+          <select id="wdnoFiscalYear" class="form-select" style="width:120px;"></select>
+        </div>
+        <button class="btn" id="wdnoExecBtn" style="width:100%;background:var(--orange);color:#000;font-weight:700;" onclick="executeWithdrawByNo()">
+          ✓ 選択した0冊を除籍する
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 除籍リスト画面（統計タブ内で開く） -->
 <div class="modal-overlay" id="withdrawListModal" onclick="closeModalOutside(event,'withdrawListModal')">
   <div class="modal-sheet" style="max-height:90vh;">
@@ -2541,7 +2588,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-07-19-fix13（複本分割時のcopies補正）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-07-19-fix14（番号リストで一括除籍）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -6653,6 +6700,182 @@ async function submitWithdraw() {
 // ============================================================
 // 除籍リスト
 // ============================================================
+// ===== 番号リストで一括除籍 =====
+let _wdnoItems = [];    // {id, regNo, title, dup, checked}
+let _wdnoNotFound = [];
+let _wdnoAlready = [];
+
+function openWithdrawByNoModal() {
+  _wdnoItems = []; _wdnoNotFound = []; _wdnoAlready = [];
+  document.getElementById('wdnoText').value = '';
+  document.getElementById('wdnoSummary').innerHTML = '';
+  document.getElementById('wdnoList').innerHTML = '';
+  document.getElementById('wdnoExecArea').style.display = 'none';
+  // 年度セレクト初期化（既存の一括除籍と同じ）
+  const currentYear = new Date().getFullYear();
+  const currentFiscal = currentYear - (new Date().getMonth() < 3 ? 1 : 0);
+  const sel = document.getElementById('wdnoFiscalYear');
+  sel.innerHTML = '';
+  for (let y = currentFiscal; y >= currentFiscal - 5; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = `令和${y - 2018}年度`;
+    sel.appendChild(opt);
+  }
+  openModal('withdrawByNoModal');
+}
+
+async function previewWithdrawByNo() {
+  const summaryEl = document.getElementById('wdnoSummary');
+  const listEl = document.getElementById('wdnoList');
+  document.getElementById('wdnoExecArea').style.display = 'none';
+  _wdnoItems = []; _wdnoNotFound = []; _wdnoAlready = [];
+
+  const raw = document.getElementById('wdnoText').value;
+  const seen = new Set();
+  raw.split(/[\s,、，]+/).forEach(t => {
+    const v = normalizeRegNo(t);
+    if (v !== '') seen.add(v);
+  });
+  const nos = [...seen];
+  if (nos.length === 0) {
+    summaryEl.innerHTML = '<div style="color:var(--red);font-size:.85em;">番号が読み取れませんでした。</div>';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  summaryEl.innerHTML = '<div style="text-align:center;color:var(--text3);font-size:13px;">⏳ 照合中…</div>';
+  listEl.innerHTML = '';
+
+  try {
+    const regMap = new Map();
+    for (let i = 0; i < nos.length; i += 300) {
+      const { data, error } = await db.from('books')
+        .select('id, registration_no, title, status')
+        .eq('school_cd', currentSchoolCd)
+        .in('registration_no', nos.slice(i, i + 300));
+      if (error) throw error;
+      (data || []).forEach(b => {
+        const key = normalizeRegNo(b.registration_no);
+        if (!regMap.has(key)) regMap.set(key, []);
+        regMap.get(key).push(b);
+      });
+    }
+
+    const sortNum = (a, b) => (parseInt(a) || 0) - (parseInt(b) || 0);
+    for (const no of nos) {
+      const all = regMap.get(no) || [];
+      const active = all.filter(b => b.status !== 'withdrawn');
+      if (all.length === 0) { _wdnoNotFound.push(no); continue; }
+      if (active.length === 0) { _wdnoAlready.push(no); continue; }
+      const dup = active.length > 1;
+      active.forEach(b => {
+        _wdnoItems.push({
+          id: b.id,
+          regNo: no,
+          title: b.title || '（書名不明）',
+          dup: dup,
+          checked: !dup, // 同一番号が複数レコードの場合は初期OFF（目視確認して選ぶ）
+        });
+      });
+    }
+    _wdnoItems.sort((a, b) => sortNum(a.regNo, b.regNo));
+    _wdnoNotFound.sort(sortNum);
+    _wdnoAlready.sort(sortNum);
+
+    const dupCount = _wdnoItems.filter(x => x.dup).length;
+    summaryEl.innerHTML = `<div style="background:var(--bg3);border-radius:10px;padding:12px;font-size:.85em;line-height:1.9;">
+      <div>入力番号：<b>${nos.length}件</b></div>
+      <div>📕 除籍対象の本：<b style="color:var(--orange);">${_wdnoItems.length}冊</b>${dupCount > 0 ? `（うち同一番号が複数レコード ${dupCount}冊・初期チェックOFF）` : ''}</div>
+      ${_wdnoAlready.length > 0 ? `<div>🗑 すでに除籍済み：<b>${_wdnoAlready.length}件</b>（スキップします）</div>` : ''}
+      ${_wdnoNotFound.length > 0 ? `<div>❓ システムに登録がない番号：<b style="color:var(--gold);">${_wdnoNotFound.length}件</b>（下に一覧）</div>` : ''}
+    </div>`;
+
+    let html = '';
+    if (_wdnoItems.length > 0) {
+      html += `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;">
+        <button onclick="toggleAllWdno(true)" style="font-size:.8em;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text1);cursor:pointer;">全選択</button>
+        <button onclick="toggleAllWdno(false)" style="font-size:.8em;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text1);cursor:pointer;">全解除</button>
+      </div>`;
+      html += _wdnoItems.map((x, i) => `
+        <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg3);border-radius:10px;margin-bottom:6px;cursor:pointer;${x.dup ? 'border:1px solid var(--gold);' : ''}">
+          <input type="checkbox" ${x.checked ? 'checked' : ''} onchange="toggleWdno(${i}, this.checked)" style="width:18px;height:18px;accent-color:var(--orange);flex-shrink:0;" />
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${x.title}</div>
+            <div style="font-size:.75em;color:var(--text3);font-family:'JetBrains Mono',monospace;">登録番号：${x.regNo}${x.dup ? '　<span style="color:var(--gold);">⚠️ 同一番号が複数</span>' : ''}</div>
+          </div>
+        </label>`).join('');
+    }
+    if (_wdnoNotFound.length > 0) {
+      html += `<div style="margin-top:10px;">
+        <div style="font-size:.8em;color:var(--text3);margin-bottom:4px;">❓ システムに登録がない番号（除籍対象外・要確認）</div>
+        <textarea readonly style="width:100%;height:60px;font-family:'JetBrains Mono',monospace;font-size:.8em;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:8px;padding:8px;box-sizing:border-box;">${_wdnoNotFound.join('\n')}</textarea>
+      </div>`;
+    }
+    listEl.innerHTML = html;
+
+    if (_wdnoItems.length > 0) {
+      document.getElementById('wdnoExecArea').style.display = 'block';
+      updateWdnoExecBtn();
+    }
+  } catch (err) {
+    console.error('除籍照合失敗:', err);
+    summaryEl.innerHTML = `<div style="color:var(--red);font-size:.85em;">❌ 照合に失敗しました: ${err.message || err}</div>`;
+  }
+}
+
+function toggleWdno(idx, checked) {
+  if (_wdnoItems[idx]) _wdnoItems[idx].checked = checked;
+  updateWdnoExecBtn();
+}
+
+function toggleAllWdno(checked) {
+  _wdnoItems.forEach(x => { x.checked = checked; });
+  // チェックボックスの見た目も更新
+  document.querySelectorAll('#wdnoList input[type="checkbox"]').forEach(cb => { cb.checked = checked; });
+  updateWdnoExecBtn();
+}
+
+function updateWdnoExecBtn() {
+  const btn = document.getElementById('wdnoExecBtn');
+  const n = _wdnoItems.filter(x => x.checked).length;
+  btn.textContent = `✓ 選択した${n}冊を除籍する`;
+  btn.disabled = n === 0;
+  btn.style.opacity = n === 0 ? '.5' : '1';
+}
+
+async function executeWithdrawByNo() {
+  const targets = _wdnoItems.filter(x => x.checked);
+  if (targets.length === 0) return;
+  const reason = document.getElementById('wdnoReason').value;
+  const fiscalYear = parseInt(document.getElementById('wdnoFiscalYear').value);
+  if (!confirm(`${targets.length}冊を「${reason}」として除籍します。\nこの操作は取り消せません。よろしいですか？`)) return;
+
+  const btn = document.getElementById('wdnoExecBtn');
+  btn.disabled = true;
+
+  try {
+    const now = new Date().toISOString();
+    const ids = targets.map(x => x.id);
+    for (let i = 0; i < ids.length; i += 500) {
+      btn.textContent = `⏳ 除籍中…（${Math.min(i + 500, ids.length)} / ${ids.length}）`;
+      const { error } = await db.from('books')
+        .update({ status: 'withdrawn', withdrawn_at: now, withdrawn_reason: reason, withdrawn_fiscal_year: fiscalYear })
+        .in('id', ids.slice(i, i + 500));
+      if (error) throw error;
+    }
+    alert(`✅ ${targets.length}冊を除籍しました。\n（除籍リスト・Excel出力から年度別に確認できます）`);
+    closeModal('withdrawByNoModal');
+    await loadBooks(currentSchoolCd);
+    await loadStats(currentSchoolCd);
+  } catch (err) {
+    console.error('一括除籍失敗:', err);
+    alert('除籍に失敗しました: ' + (err.message || err));
+    btn.disabled = false;
+    updateWdnoExecBtn();
+  }
+}
+
 // ===== 一括除籍候補 =====
 let bulkWithdrawBooks = [];
 
