@@ -2623,7 +2623,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-08-20-fix19（NDC分類一括取得：テスト軽量化・進捗表示）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-08-20-fix20（NDC分類一括取得：エラー詳細表示）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -5982,12 +5982,26 @@ function extractNdcFromOnix(item) {
 
 // Edge Function 経由で国会図書館サーチからNDCをまとめて取得
 // 戻り値: { isbn13: 'NDC番号' | null }
+let _ndcLastError = '';
 async function fetchNdcBatchFromNdl(isbns) {
   try {
     const { data, error } = await db.functions.invoke('ndc', { body: { isbns } });
-    if (error) throw error;
+    if (error) {
+      let detail = error.message || String(error);
+      // FunctionsHttpError の場合は本文にサーバ側のエラーが入っている
+      try {
+        if (error.context && typeof error.context.text === 'function') {
+          const body = await error.context.text();
+          if (body) detail += ' / ' + body.slice(0, 300);
+        }
+      } catch (e2) {}
+      _ndcLastError = detail;
+      return null;
+    }
+    if (data && data.error) { _ndcLastError = String(data.error).slice(0, 300); return null; }
     return (data && data.results) ? data.results : null;
   } catch (e) {
+    _ndcLastError = e.message || String(e);
     return null;
   }
 }
@@ -6142,7 +6156,7 @@ async function runNdcFetch(testMode) {
       // (a) 国会図書館サーチ（Edge Function経由でまとめて）
       const ndlMap = await fetchNdcBatchFromNdl(chunk.map(c => c.isbn13));
       if (ndlMap === null && i === 0) {
-        throw new Error('国会図書館サーチへの中継に失敗しました。Supabaseの Edge Function「ndc」が作成・公開されているか確認してください。');
+        throw new Error('国会図書館サーチへの中継に失敗しました。<br><span style="font-size:11px;color:var(--text3);">詳細: ' + (_ndcLastError || '不明') + '</span>');
       }
 
       // (b) NDLで取れなかった分をopenBDでまとめて補完
