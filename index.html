@@ -6015,7 +6015,7 @@ async function runNdcFetch(testMode) {
     let from = 0;
     while (true) {
       const { data, error } = await db.from('books')
-        .select('id, isbn, category, language')
+        .select('id, isbn, title, category, language')
         .eq('school_cd', currentSchoolCd)
         .neq('status', 'withdrawn')
         .is('category', null)
@@ -6025,11 +6025,21 @@ async function runNdcFetch(testMode) {
       if (!data || data.length === 0) break;
       books.push(...data);
       if (data.length < PAGE) break;
-      if (testMode && books.length >= 10) break;
       from += PAGE;
     }
 
-    const targets = testMode ? books.slice(0, 10) : books;
+    let targets = books;
+    if (testMode) {
+      // テストは洋書(978-0/978-1)を除いた日本語書籍から、蔵書全体に散らして10件抽出
+      const jp = books.filter(b => {
+        const i13 = normalizeIsbn13(b.isbn);
+        return i13 && !i13.startsWith('9780') && !i13.startsWith('9781');
+      });
+      const pool = jp.length > 0 ? jp : books;
+      const step = Math.max(1, Math.floor(pool.length / 10));
+      targets = [];
+      for (let i = 0; i < pool.length && targets.length < 10; i += step) targets.push(pool[i]);
+    }
     if (targets.length === 0) { setMsg('未分類の本はありません。'); _ndcFetchRunning = false; return; }
 
     // --- 2. ISBNを正規化して振り分け ---
@@ -6046,6 +6056,7 @@ async function runNdcFetch(testMode) {
     // --- 3. openBDへ分割リクエスト ---
     const BATCH = 100;
     const updates = [];  // {id, ndc, category, language}
+    const details = [];  // テスト実行時の1冊ごとの判定結果
     let hitNdc = 0, hitCcode = 0, miss = 0;
 
     for (let i = 0; i < queryable.length; i += BATCH) {
@@ -6062,7 +6073,11 @@ async function runNdcFetch(testMode) {
         if (r && r.category) {
           if (r.source === 'NDC') hitNdc++; else hitCcode++;
           updates.push({ id: b.id, ndc: r.ndc, category: r.category, language: null });
-        } else { miss++; }
+          if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: r.ndc, category: r.category, source: r.source });
+        } else {
+          miss++;
+          if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: null, category: null, source: null });
+        }
       });
       await new Promise(r => setTimeout(r, 120));
     }
@@ -6105,6 +6120,18 @@ async function runNdcFetch(testMode) {
       <div style="color:var(--text3);margin-top:6px;">openBDに情報なし：${miss} 件</div>
       ${badIsbn.length ? `<div style="color:var(--yellow);">ISBNが不正で対象外：${badIsbn.length} 件</div>` : ''}
       ${failed ? `<div style="color:var(--red);">更新に失敗：${failed} 件</div>` : ''}
+      ${testMode && details.length ? `
+        <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:12px;">判定結果の内訳</div>
+          ${details.map(d => `
+            <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+              <div style="color:var(--text1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.title || '(書名なし)'}</div>
+              <div style="color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:11px;">${d.isbn}</div>
+              <div style="color:${d.category ? 'var(--green)' : 'var(--red)'};">
+                ${d.category ? `→ ${d.category}${d.ndc ? `（NDC ${d.ndc}）` : ''} <span style="color:var(--text3);">[${d.source}]</span>` : '→ 情報なし'}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
       ${testMode ? '<div style="margin-top:8px;color:var(--text2);">結果に問題がなければ「▶️ 全件を一括取得」を実行してください。</div>' : ''}
     `);
     refreshNdcFetchStat();
