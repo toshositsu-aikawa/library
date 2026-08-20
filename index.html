@@ -1616,6 +1616,19 @@ html, body {
     <!-- ===== 各学校ビュー ===== -->
     <div id="singleSchoolStatsSection">
 
+      <!-- 蔵書構成（NDC分類別） -->
+      <div class="section-header-row">
+        <div class="section-title-text">蔵書構成（NDC分類別）</div>
+        <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px;" onclick="loadCollectionComposition(currentSchoolCd)">🔄 更新</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button class="btn btn-primary" id="ccBtn-titles" style="flex:1;font-size:12px;" onclick="setCompositionMode('titles')">件数</button>
+        <button class="btn btn-ghost" id="ccBtn-copies" style="flex:1;font-size:12px;" onclick="setCompositionMode('copies')">冊数</button>
+      </div>
+      <div class="card" style="margin-bottom:16px;" id="collectionComposition">
+        <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
+      </div>
+
       <!-- よく借りられている本（本校） -->
       <div class="section-header-row">
         <div class="section-title-text">よく借りられている本</div>
@@ -1754,6 +1767,26 @@ html, body {
           </label>
           <div id="importResult" style="margin-top:10px;"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- 分類（NDC）一括取得 -->
+    <div class="card" style="margin-bottom:10px;">
+      <div onclick="toggleAccordion('acc-ndc')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="font-weight:700;font-size:15px;">📚 分類（NDC）一括取得</div>
+        <div id="acc-ndc-icon" style="color:var(--text3);font-size:18px;">›</div>
+      </div>
+      <div id="acc-ndc" style="display:none;padding:0 16px 16px;">
+        <div style="font-size:.85em;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+          ISBNをもとにopenBDへ問い合わせ、分類番号（NDC）とカテゴリーを自動で設定します。<br>
+          <span style="color:var(--text3);">・既に分類が入っている本は変更しません<br>
+          ・10桁ISBNは13桁に自動変換します<br>
+          ・978-0／978-1（英米の本）は問い合わせず「外国語」に設定します</span>
+        </div>
+        <div id="ndcFetchStat" style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text2);">未分類の件数を確認中…</div>
+        <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;" onclick="runNdcFetch(true)">🧪 10件でテスト実行</button>
+        <button class="btn btn-primary" style="width:100%;" onclick="runNdcFetch(false)">▶️ 全件を一括取得</button>
+        <div id="ndcFetchResult" style="margin-top:12px;"></div>
       </div>
     </div>
 
@@ -3337,6 +3370,7 @@ function toggleAccordion(id) {
   if (!isOpen) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
+    if (id === 'acc-ndc')   refreshNdcFetchStat();
     if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
     if (id === 'acc-backup') {
       const el = document.getElementById('backupLastDate');
@@ -4299,6 +4333,154 @@ function renderCategoryPopular() {
     </div>`).join('');
 }
 
+// ============================================================
+// 蔵書構成（NDC分類別）
+// ============================================================
+
+// 表示順（0類→9類→絵本→外国語→未設定）
+const NDC_DISPLAY_ORDER = [
+  '0類：総記','1類：哲学・心理','2類：歴史・地理・伝記','3類：社会科学','4類：自然科学',
+  '5類：技術・工学','6類：産業','7類：芸術・体育','8類：言語','9類：文学','絵本','外国語','未設定'
+];
+
+// グラフ用の識別しやすい配色（テーマ非依存）
+const NDC_CHART_COLORS = {
+  '0類：総記':'#8b93a7',
+  '1類：哲学・心理':'#9b7fd4',
+  '2類：歴史・地理・伝記':'#c9803f',
+  '3類：社会科学':'#4a90d9',
+  '4類：自然科学':'#3fb27f',
+  '5類：技術・工学':'#5bc0c0',
+  '6類：産業':'#8fb339',
+  '7類：芸術・体育':'#e05f7a',
+  '8類：言語':'#d4a02f',
+  '9類：文学':'#e0672f',
+  '絵本':'#f2b134',
+  '外国語':'#7a8fd4',
+  '未設定':'#5a6070',
+};
+
+let _compositionData = null;   // { cat: {titles, copies} }
+let _compositionMode = 'titles';
+
+function setCompositionMode(mode) {
+  _compositionMode = mode;
+  ['titles','copies'].forEach(m => {
+    const btn = document.getElementById('ccBtn-' + m);
+    if (btn) btn.className = 'btn ' + (m === mode ? 'btn-primary' : 'btn-ghost');
+  });
+  renderCollectionComposition();
+}
+
+async function loadCollectionComposition(schoolCd) {
+  const el = document.getElementById('collectionComposition');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>';
+
+  const counts = {};
+  const PAGE = 1000;
+  let from = 0;
+  try {
+    while (true) {
+      const { data, error } = await db.from('books')
+        .select('category, copies')
+        .eq('school_cd', schoolCd)
+        .neq('status', 'withdrawn')
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      data.forEach(b => {
+        const cat = (b.category && b.category.trim()) ? b.category.trim() : '未設定';
+        if (!counts[cat]) counts[cat] = { titles: 0, copies: 0 };
+        counts[cat].titles += 1;
+        counts[cat].copies += Number(b.copies) || 1;
+      });
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+  } catch (e) {
+    el.innerHTML = '<div style="text-align:center;color:var(--red);padding:20px;font-size:13px;">読み込みに失敗しました</div>';
+    return;
+  }
+  _compositionData = counts;
+  renderCollectionComposition();
+}
+
+function renderCollectionComposition() {
+  const el = document.getElementById('collectionComposition');
+  if (!el || !_compositionData) return;
+  const counts = _compositionData;
+  const key = _compositionMode;
+  const unit = key === 'copies' ? '冊' : '件';
+
+  // 表示順に並べ、未知のカテゴリーは末尾（未設定の前）に寄せる
+  const known = NDC_DISPLAY_ORDER.filter(c => counts[c]);
+  const others = Object.keys(counts).filter(c => !NDC_DISPLAY_ORDER.includes(c));
+  const cats = known.filter(c => c !== '未設定').concat(others).concat(counts['未設定'] ? ['未設定'] : []);
+
+  const total = cats.reduce((s, c) => s + counts[c][key], 0);
+  if (total === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">蔵書データがありません</div>';
+    return;
+  }
+
+  // ---- ドーナツグラフ（SVG） ----
+  const R = 60, CIRC = 2 * Math.PI * R;
+  let offset = 0;
+  const arcs = cats.map(c => {
+    const v = counts[c][key];
+    const len = v / total * CIRC;
+    const seg = `<circle cx="80" cy="80" r="${R}" fill="none"
+      stroke="${NDC_CHART_COLORS[c] || '#7a8090'}" stroke-width="28"
+      stroke-dasharray="${len.toFixed(2)} ${(CIRC - len).toFixed(2)}"
+      stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 80 80)"></circle>`;
+    offset += len;
+    return seg;
+  }).join('');
+
+  const unsetCount = counts['未設定'] ? counts['未設定'][key] : 0;
+  const unsetPct = total ? (unsetCount / total * 100) : 0;
+
+  const donut = `
+    <div style="display:flex;justify-content:center;margin-bottom:6px;">
+      <svg viewBox="0 0 160 160" style="width:180px;height:180px;">
+        ${arcs}
+        <text x="80" y="74" text-anchor="middle" style="font-size:22px;font-weight:700;fill:var(--text1);font-family:'JetBrains Mono',monospace;">${total.toLocaleString()}</text>
+        <text x="80" y="92" text-anchor="middle" style="font-size:11px;fill:var(--text3);">${unit === '冊' ? '総冊数' : '総件数'}</text>
+      </svg>
+    </div>`;
+
+  // ---- 横棒＋凡例 ----
+  const max = Math.max(...cats.map(c => counts[c][key]));
+  const bars = cats.map(c => {
+    const v = counts[c][key];
+    const pct = v / total * 100;
+    const w = max ? (v / max * 100) : 0;
+    const color = NDC_CHART_COLORS[c] || '#7a8090';
+    return `<div style="margin-bottom:9px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px;gap:8px;">
+        <span style="color:var(--text1);font-weight:500;display:flex;align-items:center;gap:6px;min-width:0;">
+          <span style="width:10px;height:10px;border-radius:3px;background:${color};flex-shrink:0;"></span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c}</span>
+        </span>
+        <span style="color:var(--text2);flex-shrink:0;font-family:'JetBrains Mono',monospace;">${v.toLocaleString()}${unit}　${pct.toFixed(1)}%</span>
+      </div>
+      <div style="background:var(--border);border-radius:4px;height:8px;">
+        <div style="width:${w.toFixed(1)}%;background:${color};border-radius:4px;height:8px;transition:width .4s;"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const warn = unsetPct >= 10
+    ? `<div style="background:var(--bg3);border-left:3px solid var(--yellow);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12px;color:var(--text2);line-height:1.6;">
+         ⚠️ 未設定が ${unsetPct.toFixed(1)}% あります。<br>設定 →「📚 分類（NDC）一括取得」で自動設定できます。
+       </div>`
+    : '';
+
+  el.innerHTML = `<div style="padding:14px 16px;">${donut}${bars}${warn}</div>`;
+}
+
 async function loadStatsPage(schoolCd) {
   if (schoolCd === 'all') {
     await loadAllSchoolStats();
@@ -4343,6 +4525,9 @@ async function loadStatsPage(schoolCd) {
   const typeLabel = isElem ? '小学校6校' : '中学校3校';
   const labelEl   = el('schoolTypeRankingLabel');
   if (labelEl) labelEl.textContent = `🏘️ ${typeLabel}全体で人気の本`;
+
+  // 蔵書構成グラフ
+  loadCollectionComposition(schoolCd);
 
   // 人気本：デフォルト「今学期」で読み込む
   _popularPeriod = 'term';
@@ -5734,6 +5919,199 @@ async function fetchBookInfo(isbn) {
     }
   } catch(e) {}
   return null;
+}
+
+// ============================================================
+// 分類（NDC）一括取得
+// ============================================================
+
+// NDCの類番号 → カテゴリー名
+const NDC_CLASS_TO_CATEGORY = {
+  '0':'0類：総記','1':'1類：哲学・心理','2':'2類：歴史・地理・伝記','3':'3類：社会科学',
+  '4':'4類：自然科学','5':'5類：技術・工学','6':'6類：産業','7':'7類：芸術・体育',
+  '8':'8類：言語','9':'9類：文学'
+};
+
+// 10桁ISBN → 13桁
+function isbn10to13(isbn10) {
+  const core = '978' + isbn10.slice(0, 9);
+  if (!/^\d{12}$/.test(core)) return null;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(core[i]) * (i % 2 ? 3 : 1);
+  return core + String((10 - sum % 10) % 10);
+}
+
+// ISBNを13桁に正規化（不正な値はnull）
+function normalizeIsbn13(raw) {
+  if (!raw) return null;
+  const s = String(raw).replace(/[-\s]/g, '').toUpperCase();
+  if (/^\d{13}$/.test(s)) return s;
+  if (/^\d{9}[\dX]$/.test(s)) return isbn10to13(s);
+  return null;
+}
+
+// openBDのonixから NDC / カテゴリー を判定
+function extractNdcFromOnix(item) {
+  const subjects = item?.onix?.DescriptiveDetail?.Subject;
+  if (!Array.isArray(subjects)) return null;
+
+  let ndc = null, ccode = null;
+  for (const s of subjects) {
+    const scheme = String(s.SubjectSchemeIdentifier || '');
+    const code   = String(s.SubjectCode || '').trim();
+    if (!code) continue;
+    if (scheme === '79' && /^\d{3}/.test(code)) { ndc = code; }
+    else if (scheme === '78' && /^\d{4}$/.test(code)) { ccode = code; }
+    // スキームが不明でもNDC形式ならNDC候補として拾う
+    else if (!ndc && scheme !== '78' && /^\d{3}(\.\d+)?$/.test(code)) { ndc = code; }
+  }
+
+  if (ndc) {
+    return { ndc, category: NDC_CLASS_TO_CATEGORY[ndc[0]] || null, source: 'NDC' };
+  }
+  if (ccode) {
+    // Cコード：2桁目=発行形態（7=絵本）、3桁目=内容の類
+    if (ccode[1] === '7') return { ndc: null, category: '絵本', source: 'Cコード' };
+    const cls = ccode[2];
+    if (NDC_CLASS_TO_CATEGORY[cls]) return { ndc: null, category: NDC_CLASS_TO_CATEGORY[cls], source: 'Cコード' };
+  }
+  return null;
+}
+
+// 未分類件数の表示
+async function refreshNdcFetchStat() {
+  const el = document.getElementById('ndcFetchStat');
+  if (!el) return;
+  try {
+    const { count: total } = await db.from('books')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_cd', currentSchoolCd).neq('status', 'withdrawn');
+    const { count: unset } = await db.from('books')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_cd', currentSchoolCd).neq('status', 'withdrawn').is('category', null);
+    el.innerHTML = `蔵書 <b>${Number(total||0).toLocaleString()}</b> 件のうち、分類が未設定は <b style="color:var(--yellow);">${Number(unset||0).toLocaleString()}</b> 件です`;
+  } catch (e) {
+    el.textContent = '件数の取得に失敗しました';
+  }
+}
+
+let _ndcFetchRunning = false;
+
+async function runNdcFetch(testMode) {
+  if (_ndcFetchRunning) { alert('実行中です。完了までお待ちください。'); return; }
+  const resultEl = document.getElementById('ndcFetchResult');
+  if (!resultEl) return;
+
+  if (!testMode && !confirm('未分類の本すべてについてopenBDに問い合わせます。\n件数によっては数分かかります。実行しますか？')) return;
+
+  _ndcFetchRunning = true;
+  const setMsg = html => { resultEl.innerHTML = `<div style="background:var(--bg3);border-radius:10px;padding:12px;font-size:13px;line-height:1.7;">${html}</div>`; };
+  setMsg('対象の本を読み込み中…');
+
+  try {
+    // --- 1. 未分類の本を取得 ---
+    const books = [];
+    const PAGE = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await db.from('books')
+        .select('id, isbn, category, language')
+        .eq('school_cd', currentSchoolCd)
+        .neq('status', 'withdrawn')
+        .is('category', null)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      books.push(...data);
+      if (data.length < PAGE) break;
+      if (testMode && books.length >= 10) break;
+      from += PAGE;
+    }
+
+    const targets = testMode ? books.slice(0, 10) : books;
+    if (targets.length === 0) { setMsg('未分類の本はありません。'); _ndcFetchRunning = false; return; }
+
+    // --- 2. ISBNを正規化して振り分け ---
+    const foreign = [];          // 978-0 / 978-1 → 外国語
+    const queryable = [];        // openBDへ問い合わせ
+    const badIsbn = [];          // ISBN不正
+    for (const b of targets) {
+      const isbn13 = normalizeIsbn13(b.isbn);
+      if (!isbn13) { badIsbn.push(b); continue; }
+      if (isbn13.startsWith('9780') || isbn13.startsWith('9781')) { foreign.push(b); continue; }
+      queryable.push({ ...b, isbn13 });
+    }
+
+    // --- 3. openBDへ分割リクエスト ---
+    const BATCH = 100;
+    const updates = [];  // {id, ndc, category, language}
+    let hitNdc = 0, hitCcode = 0, miss = 0;
+
+    for (let i = 0; i < queryable.length; i += BATCH) {
+      const chunk = queryable.slice(i, i + BATCH);
+      setMsg(`openBDへ問い合わせ中… ${Math.min(i + BATCH, queryable.length)} / ${queryable.length} 件`);
+      let json = null;
+      try {
+        const res = await fetch('https://api.openbd.jp/v1/get?isbn=' + chunk.map(c => c.isbn13).join(','));
+        json = await res.json();
+      } catch (e) { json = null; }
+      chunk.forEach((b, idx) => {
+        const item = Array.isArray(json) ? json[idx] : null;
+        const r = item ? extractNdcFromOnix(item) : null;
+        if (r && r.category) {
+          if (r.source === 'NDC') hitNdc++; else hitCcode++;
+          updates.push({ id: b.id, ndc: r.ndc, category: r.category, language: null });
+        } else { miss++; }
+      });
+      await new Promise(r => setTimeout(r, 120));
+    }
+
+    foreign.forEach(b => updates.push({ id: b.id, ndc: null, category: '外国語', language: b.language || '英語' }));
+
+    // --- 4. 同じ値ごとにまとめて更新 ---
+    const groups = new Map();
+    updates.forEach(u => {
+      const key = `${u.ndc || ''}\u0000${u.category}\u0000${u.language || ''}`;
+      if (!groups.has(key)) groups.set(key, { ndc: u.ndc, category: u.category, language: u.language, ids: [] });
+      groups.get(key).ids.push(u.id);
+    });
+
+    let written = 0, failed = 0;
+    const CH = 200;
+    let gi = 0;
+    for (const g of groups.values()) {
+      gi++;
+      for (let i = 0; i < g.ids.length; i += CH) {
+        const ids = g.ids.slice(i, i + CH);
+        const payload = { category: g.category };
+        if (g.ndc) payload.ndc = g.ndc;
+        if (g.language) payload.language = g.language;
+        const { error } = await db.from('books').update(payload).in('id', ids);
+        if (error) { failed += ids.length; } else { written += ids.length; }
+      }
+      setMsg(`データベースを更新中… ${gi} / ${groups.size} 種類`);
+    }
+
+    // --- 5. 結果表示 ---
+    setMsg(`
+      <div style="font-weight:700;margin-bottom:8px;">${testMode ? '🧪 テスト実行' : '✅'} 完了（対象 ${targets.length} 件）</div>
+      <div style="color:var(--green);">分類を設定：${written} 件</div>
+      <div style="color:var(--text2);padding-left:12px;font-size:12px;">
+        ・NDCから：${hitNdc} 件<br>
+        ・Cコードから推定：${hitCcode} 件<br>
+        ・洋書として「外国語」：${foreign.length} 件
+      </div>
+      <div style="color:var(--text3);margin-top:6px;">openBDに情報なし：${miss} 件</div>
+      ${badIsbn.length ? `<div style="color:var(--yellow);">ISBNが不正で対象外：${badIsbn.length} 件</div>` : ''}
+      ${failed ? `<div style="color:var(--red);">更新に失敗：${failed} 件</div>` : ''}
+      ${testMode ? '<div style="margin-top:8px;color:var(--text2);">結果に問題がなければ「▶️ 全件を一括取得」を実行してください。</div>' : ''}
+    `);
+    refreshNdcFetchStat();
+  } catch (e) {
+    setMsg(`<span style="color:var(--red);">エラーが発生しました：${e.message || e}</span>`);
+  }
+  _ndcFetchRunning = false;
 }
 
 // 未登録本データを一時保存
