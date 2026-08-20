@@ -1782,7 +1782,7 @@ html, body {
           <span style="color:var(--text3);">・既に分類が入っている本は変更しません<br>
           ・10桁ISBNは13桁に自動変換します<br>
           ・978-0／978-1（英米の本）は問い合わせず「外国語」に設定します<br>
-          ・1件ずつの問い合わせのため全件だと数十分かかります。途中で中断しても続きから再開できます</span>
+          ・Supabaseの Edge Function「ndc」が必要です。途中で中断しても続きから再開できます</span>
         </div>
         <div id="ndcFetchStat" style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text2);">未分類の件数を確認中…</div>
         <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;" onclick="runNdcFetch(true)">🧪 10件でテスト実行</button>
@@ -2623,7 +2623,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-08-20-fix17（NDC分類一括取得：国会図書館サーチ対応）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-08-20-fix18（NDC分類一括取得：Edge Function経由）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -5980,27 +5980,13 @@ function extractNdcFromOnix(item) {
   return null;
 }
 
-// 国立国会図書館サーチでISBNからNDCを取得
-async function fetchNdcFromNdl(isbn13) {
+// Edge Function 経由で国会図書館サーチからNDCをまとめて取得
+// 戻り値: { isbn13: 'NDC番号' | null }
+async function fetchNdcBatchFromNdl(isbns) {
   try {
-    const res = await fetch(`https://ndlsearch.ndl.go.jp/api/opensearch?isbn=${isbn13}`);
-    if (!res.ok) return null;
-    const text = await res.text();
-    const doc = new DOMParser().parseFromString(text, 'application/xml');
-    if (doc.querySelector('parsererror')) return null;
-
-    // NDC9 を優先し、無ければ NDC8
-    let ndc = null;
-    const subs = doc.getElementsByTagName('dc:subject');
-    for (const s of subs) {
-      const type = s.getAttribute('xsi:type') || '';
-      const val  = (s.textContent || '').trim();
-      if (!/^\d{3}/.test(val)) continue;
-      if (type.indexOf('NDC9') >= 0) { ndc = val; break; }
-      if (type.indexOf('NDC8') >= 0 && !ndc) { ndc = val; }
-    }
-    if (!ndc) return null;
-    return { ndc, category: NDC_CLASS_TO_CATEGORY[ndc[0]] || null, source: 'NDL' };
+    const { data, error } = await db.functions.invoke('ndc', { body: { isbns } });
+    if (error) throw error;
+    return (data && data.results) ? data.results : null;
   } catch (e) {
     return null;
   }
@@ -6058,7 +6044,7 @@ async function runNdcFetch(testMode) {
   const resultEl = document.getElementById('ndcFetchResult');
   if (!resultEl) return;
 
-  if (!testMode && !confirm('未分類の本すべてについて国会図書館サーチに問い合わせます。\n1件ずつの問い合わせのため、数十分かかる場合があります。\n途中で中断しても、次回は続きから再開できます。\n\n実行しますか？')) return;
+  if (!testMode && !confirm('未分類の本すべてについて国会図書館サーチに問い合わせます。\n件数によっては数分かかります。\n途中で中断しても、次回は続きから再開できます。\n\n実行しますか？')) return;
 
   _ndcFetchRunning = true;
   _ndcFetchAbort = false;
@@ -6123,51 +6109,67 @@ async function runNdcFetch(testMode) {
     foreign.forEach(b => updates.push({ id: b.id, ndc: null, category: '外国語', language: b.language || '英語' }));
 
     const started = Date.now();
-    for (let i = 0; i < queryable.length; i++) {
+    const BATCH = 50;
+    for (let i = 0; i < queryable.length; i += BATCH) {
       if (_ndcFetchAbort) { aborted = true; break; }
-      const b = queryable[i];
+      const chunk = queryable.slice(i, i + BATCH);
 
-      let r = await fetchNdcFromNdl(b.isbn13);
-      if (r) { hitNdl++; }
-      else {
-        // NDLで取れない場合はopenBDのCコード等で補完
+      // (a) 国会図書館サーチ（Edge Function経由でまとめて）
+      const ndlMap = await fetchNdcBatchFromNdl(chunk.map(c => c.isbn13));
+      if (ndlMap === null && i === 0) {
+        throw new Error('国会図書館サーチへの中継に失敗しました。Supabaseの Edge Function「ndc」が作成・公開されているか確認してください。');
+      }
+
+      // (b) NDLで取れなかった分をopenBDでまとめて補完
+      const rest = chunk.filter(c => !(ndlMap && ndlMap[c.isbn13]));
+      let obMap = {};
+      if (rest.length > 0) {
         try {
-          const res = await fetch(`https://api.openbd.jp/v1/get?isbn=${b.isbn13}`);
+          const res = await fetch('https://api.openbd.jp/v1/get?isbn=' + rest.map(c => c.isbn13).join(','));
           const json = await res.json();
-          r = Array.isArray(json) && json[0] ? extractNdcFromOnix(json[0]) : null;
-        } catch (e) { r = null; }
-        if (r) hitOpenbd++;
+          if (Array.isArray(json)) rest.forEach((c, k) => { obMap[c.isbn13] = json[k] ? extractNdcFromOnix(json[k]) : null; });
+        } catch (e) {}
       }
 
-      if (r && r.category) {
-        updates.push({ id: b.id, ndc: r.ndc, category: r.category, language: null });
-        if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: r.ndc, category: r.category, source: r.source });
-      } else {
-        miss++;
-        if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: null, category: null, source: null });
-      }
+      chunk.forEach(b => {
+        let r = null;
+        const ndlNdc = ndlMap ? ndlMap[b.isbn13] : null;
+        if (ndlNdc) {
+          r = { ndc: ndlNdc, category: NDC_CLASS_TO_CATEGORY[String(ndlNdc)[0]] || null, source: 'NDL' };
+          if (r.category) hitNdl++;
+        } else if (obMap[b.isbn13]) {
+          r = obMap[b.isbn13];
+          if (r.category) hitOpenbd++;
+        }
+        if (r && r.category) {
+          updates.push({ id: b.id, ndc: r.ndc, category: r.category, language: null });
+          if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: r.ndc, category: r.category, source: r.source });
+        } else {
+          miss++;
+          if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: null, category: null, source: null });
+        }
+      });
 
       // 進捗表示（残り時間の目安つき）
-      if (i % 5 === 0 || i === queryable.length - 1) {
-        const done = i + 1;
-        const per  = (Date.now() - started) / done;
-        const left = Math.round(per * (queryable.length - done) / 1000);
-        const mm   = Math.floor(left / 60), ss = left % 60;
-        setMsg(`
-          <div style="font-weight:700;margin-bottom:6px;">問い合わせ中… ${done.toLocaleString()} / ${queryable.length.toLocaleString()} 件</div>
-          <div style="background:var(--border);border-radius:4px;height:8px;margin-bottom:8px;">
-            <div style="width:${(done/queryable.length*100).toFixed(1)}%;background:var(--blue);border-radius:4px;height:8px;"></div>
-          </div>
-          <div style="color:var(--green);">分類を取得：${(hitNdl + hitOpenbd).toLocaleString()} 件</div>
-          <div style="color:var(--text3);">情報なし：${miss.toLocaleString()} 件</div>
-          <div style="color:var(--text3);margin-top:4px;">残り約 ${mm}分${ss}秒</div>
-          <div style="color:var(--text3);font-size:11px;margin-top:6px;">※この画面を閉じると中断されます。途中で止めても、次回は続きから再開できます。</div>
-        `);
-      }
+      const done = Math.min(i + BATCH, queryable.length);
+      const per  = (Date.now() - started) / done;
+      const left = Math.round(per * (queryable.length - done) / 1000);
+      const mm   = Math.floor(left / 60), ss = left % 60;
+      setMsg(`
+        <div style="font-weight:700;margin-bottom:6px;">問い合わせ中… ${done.toLocaleString()} / ${queryable.length.toLocaleString()} 件</div>
+        <div style="background:var(--border);border-radius:4px;height:8px;margin-bottom:8px;">
+          <div style="width:${(done/queryable.length*100).toFixed(1)}%;background:var(--blue);border-radius:4px;height:8px;"></div>
+        </div>
+        <div style="color:var(--green);">分類を取得：${(hitNdl + hitOpenbd).toLocaleString()} 件</div>
+        <div style="color:var(--text3);">情報なし：${miss.toLocaleString()} 件</div>
+        <div style="color:var(--text3);margin-top:4px;">残り約 ${mm}分${ss}秒</div>
+        <div style="color:var(--text3);font-size:11px;margin-top:6px;">※この画面を閉じると中断されます。途中で止めても、次回は続きから再開できます。</div>
+      `);
 
       // 途中経過を1000件ごとに保存（中断時のデータ保全）
       if (updates.length >= 1000) {
-        await writeNdcUpdates(updates.splice(0, updates.length));
+        const w = await writeNdcUpdates(updates.splice(0, updates.length));
+        _ndcWritten += w.written; _ndcFailed += w.failed;
       }
     }
 
