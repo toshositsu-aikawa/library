@@ -1778,14 +1778,16 @@ html, body {
       </div>
       <div id="acc-ndc" style="display:none;padding:0 16px 16px;">
         <div style="font-size:.85em;color:var(--text2);margin-bottom:12px;line-height:1.6;">
-          ISBNをもとにopenBDへ問い合わせ、分類番号（NDC）とカテゴリーを自動で設定します。<br>
+          ISBNをもとに国立国会図書館サーチへ問い合わせ、分類番号（NDC）とカテゴリーを自動で設定します。<br>
           <span style="color:var(--text3);">・既に分類が入っている本は変更しません<br>
           ・10桁ISBNは13桁に自動変換します<br>
-          ・978-0／978-1（英米の本）は問い合わせず「外国語」に設定します</span>
+          ・978-0／978-1（英米の本）は問い合わせず「外国語」に設定します<br>
+          ・1件ずつの問い合わせのため全件だと数十分かかります。途中で中断しても続きから再開できます</span>
         </div>
         <div id="ndcFetchStat" style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text2);">未分類の件数を確認中…</div>
         <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;" onclick="runNdcFetch(true)">🧪 10件でテスト実行</button>
         <button class="btn btn-primary" style="width:100%;" onclick="runNdcFetch(false)">▶️ 全件を一括取得</button>
+        <button class="btn btn-ghost" id="ndcAbortBtn" style="width:100%;margin-top:8px;display:none;color:var(--red);" onclick="abortNdcFetch()">⏸️ 中断する</button>
         <div id="ndcFetchResult" style="margin-top:12px;"></div>
       </div>
     </div>
@@ -2621,7 +2623,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-08-20-fix16（NDC分類一括取得・蔵書構成グラフ）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-08-20-fix17（NDC分類一括取得：国会図書館サーチ対応）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -5978,6 +5980,32 @@ function extractNdcFromOnix(item) {
   return null;
 }
 
+// 国立国会図書館サーチでISBNからNDCを取得
+async function fetchNdcFromNdl(isbn13) {
+  try {
+    const res = await fetch(`https://ndlsearch.ndl.go.jp/api/opensearch?isbn=${isbn13}`);
+    if (!res.ok) return null;
+    const text = await res.text();
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if (doc.querySelector('parsererror')) return null;
+
+    // NDC9 を優先し、無ければ NDC8
+    let ndc = null;
+    const subs = doc.getElementsByTagName('dc:subject');
+    for (const s of subs) {
+      const type = s.getAttribute('xsi:type') || '';
+      const val  = (s.textContent || '').trim();
+      if (!/^\d{3}/.test(val)) continue;
+      if (type.indexOf('NDC9') >= 0) { ndc = val; break; }
+      if (type.indexOf('NDC8') >= 0 && !ndc) { ndc = val; }
+    }
+    if (!ndc) return null;
+    return { ndc, category: NDC_CLASS_TO_CATEGORY[ndc[0]] || null, source: 'NDL' };
+  } catch (e) {
+    return null;
+  }
+}
+
 // 未分類件数の表示
 async function refreshNdcFetchStat() {
   const el = document.getElementById('ndcFetchStat');
@@ -5996,15 +6024,47 @@ async function refreshNdcFetchStat() {
 }
 
 let _ndcFetchRunning = false;
+let _ndcFetchAbort = false;
+let _ndcWritten = 0, _ndcFailed = 0;
+
+// 同じ分類ごとにまとめてDBへ書き込む
+async function writeNdcUpdates(updates) {
+  let written = 0, failed = 0;
+  if (!updates || updates.length === 0) return { written, failed };
+  const groups = new Map();
+  updates.forEach(u => {
+    const key = `${u.ndc || ''}\u0000${u.category}\u0000${u.language || ''}`;
+    if (!groups.has(key)) groups.set(key, { ndc: u.ndc, category: u.category, language: u.language, ids: [] });
+    groups.get(key).ids.push(u.id);
+  });
+  const CH = 200;
+  for (const g of groups.values()) {
+    for (let i = 0; i < g.ids.length; i += CH) {
+      const ids = g.ids.slice(i, i + CH);
+      const payload = { category: g.category };
+      if (g.ndc) payload.ndc = g.ndc;
+      if (g.language) payload.language = g.language;
+      const { error } = await db.from('books').update(payload).in('id', ids);
+      if (error) { failed += ids.length; } else { written += ids.length; }
+    }
+  }
+  return { written, failed };
+}
+
+function abortNdcFetch() { _ndcFetchAbort = true; }
 
 async function runNdcFetch(testMode) {
   if (_ndcFetchRunning) { alert('実行中です。完了までお待ちください。'); return; }
   const resultEl = document.getElementById('ndcFetchResult');
   if (!resultEl) return;
 
-  if (!testMode && !confirm('未分類の本すべてについてopenBDに問い合わせます。\n件数によっては数分かかります。実行しますか？')) return;
+  if (!testMode && !confirm('未分類の本すべてについて国会図書館サーチに問い合わせます。\n1件ずつの問い合わせのため、数十分かかる場合があります。\n途中で中断しても、次回は続きから再開できます。\n\n実行しますか？')) return;
 
   _ndcFetchRunning = true;
+  _ndcFetchAbort = false;
+  _ndcWritten = 0; _ndcFailed = 0;
+  const abortBtn = document.getElementById('ndcAbortBtn');
+  if (abortBtn && !testMode) abortBtn.style.display = 'block';
   const setMsg = html => { resultEl.innerHTML = `<div style="background:var(--bg3);border-radius:10px;padding:12px;font-size:13px;line-height:1.7;">${html}</div>`; };
   setMsg('対象の本を読み込み中…');
 
@@ -6053,73 +6113,83 @@ async function runNdcFetch(testMode) {
       queryable.push({ ...b, isbn13 });
     }
 
-    // --- 3. openBDへ分割リクエスト ---
-    const BATCH = 100;
+    // --- 3. NDLサーチへ1件ずつ問い合わせ（openBDで補完） ---
     const updates = [];  // {id, ndc, category, language}
     const details = [];  // テスト実行時の1冊ごとの判定結果
-    let hitNdc = 0, hitCcode = 0, miss = 0;
+    let hitNdl = 0, hitOpenbd = 0, miss = 0;
+    let aborted = false;
 
-    for (let i = 0; i < queryable.length; i += BATCH) {
-      const chunk = queryable.slice(i, i + BATCH);
-      setMsg(`openBDへ問い合わせ中… ${Math.min(i + BATCH, queryable.length)} / ${queryable.length} 件`);
-      let json = null;
-      try {
-        const res = await fetch('https://api.openbd.jp/v1/get?isbn=' + chunk.map(c => c.isbn13).join(','));
-        json = await res.json();
-      } catch (e) { json = null; }
-      chunk.forEach((b, idx) => {
-        const item = Array.isArray(json) ? json[idx] : null;
-        const r = item ? extractNdcFromOnix(item) : null;
-        if (r && r.category) {
-          if (r.source === 'NDC') hitNdc++; else hitCcode++;
-          updates.push({ id: b.id, ndc: r.ndc, category: r.category, language: null });
-          if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: r.ndc, category: r.category, source: r.source });
-        } else {
-          miss++;
-          if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: null, category: null, source: null });
-        }
-      });
-      await new Promise(r => setTimeout(r, 120));
-    }
-
+    // まず洋書分を確定
     foreign.forEach(b => updates.push({ id: b.id, ndc: null, category: '外国語', language: b.language || '英語' }));
 
-    // --- 4. 同じ値ごとにまとめて更新 ---
-    const groups = new Map();
-    updates.forEach(u => {
-      const key = `${u.ndc || ''}\u0000${u.category}\u0000${u.language || ''}`;
-      if (!groups.has(key)) groups.set(key, { ndc: u.ndc, category: u.category, language: u.language, ids: [] });
-      groups.get(key).ids.push(u.id);
-    });
+    const started = Date.now();
+    for (let i = 0; i < queryable.length; i++) {
+      if (_ndcFetchAbort) { aborted = true; break; }
+      const b = queryable[i];
 
-    let written = 0, failed = 0;
-    const CH = 200;
-    let gi = 0;
-    for (const g of groups.values()) {
-      gi++;
-      for (let i = 0; i < g.ids.length; i += CH) {
-        const ids = g.ids.slice(i, i + CH);
-        const payload = { category: g.category };
-        if (g.ndc) payload.ndc = g.ndc;
-        if (g.language) payload.language = g.language;
-        const { error } = await db.from('books').update(payload).in('id', ids);
-        if (error) { failed += ids.length; } else { written += ids.length; }
+      let r = await fetchNdcFromNdl(b.isbn13);
+      if (r) { hitNdl++; }
+      else {
+        // NDLで取れない場合はopenBDのCコード等で補完
+        try {
+          const res = await fetch(`https://api.openbd.jp/v1/get?isbn=${b.isbn13}`);
+          const json = await res.json();
+          r = Array.isArray(json) && json[0] ? extractNdcFromOnix(json[0]) : null;
+        } catch (e) { r = null; }
+        if (r) hitOpenbd++;
       }
-      setMsg(`データベースを更新中… ${gi} / ${groups.size} 種類`);
+
+      if (r && r.category) {
+        updates.push({ id: b.id, ndc: r.ndc, category: r.category, language: null });
+        if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: r.ndc, category: r.category, source: r.source });
+      } else {
+        miss++;
+        if (testMode) details.push({ title: b.title, isbn: b.isbn13, ndc: null, category: null, source: null });
+      }
+
+      // 進捗表示（残り時間の目安つき）
+      if (i % 5 === 0 || i === queryable.length - 1) {
+        const done = i + 1;
+        const per  = (Date.now() - started) / done;
+        const left = Math.round(per * (queryable.length - done) / 1000);
+        const mm   = Math.floor(left / 60), ss = left % 60;
+        setMsg(`
+          <div style="font-weight:700;margin-bottom:6px;">問い合わせ中… ${done.toLocaleString()} / ${queryable.length.toLocaleString()} 件</div>
+          <div style="background:var(--border);border-radius:4px;height:8px;margin-bottom:8px;">
+            <div style="width:${(done/queryable.length*100).toFixed(1)}%;background:var(--blue);border-radius:4px;height:8px;"></div>
+          </div>
+          <div style="color:var(--green);">分類を取得：${(hitNdl + hitOpenbd).toLocaleString()} 件</div>
+          <div style="color:var(--text3);">情報なし：${miss.toLocaleString()} 件</div>
+          <div style="color:var(--text3);margin-top:4px;">残り約 ${mm}分${ss}秒</div>
+          <div style="color:var(--text3);font-size:11px;margin-top:6px;">※この画面を閉じると中断されます。途中で止めても、次回は続きから再開できます。</div>
+        `);
+      }
+
+      // 途中経過を1000件ごとに保存（中断時のデータ保全）
+      if (updates.length >= 1000) {
+        await writeNdcUpdates(updates.splice(0, updates.length));
+      }
     }
+
+    // --- 4. 残りをまとめて更新 ---
+    setMsg('データベースを更新中…');
+    const w = await writeNdcUpdates(updates);
+    _ndcWritten += w.written;
+    _ndcFailed  += w.failed;
 
     // --- 5. 結果表示 ---
     setMsg(`
-      <div style="font-weight:700;margin-bottom:8px;">${testMode ? '🧪 テスト実行' : '✅'} 完了（対象 ${targets.length} 件）</div>
-      <div style="color:var(--green);">分類を設定：${written} 件</div>
+      <div style="font-weight:700;margin-bottom:8px;">${aborted ? '⏸️ 中断しました' : (testMode ? '🧪 テスト実行 完了' : '✅ 完了')}（対象 ${targets.length.toLocaleString()} 件）</div>
+      <div style="color:var(--green);">分類を設定：${_ndcWritten.toLocaleString()} 件</div>
       <div style="color:var(--text2);padding-left:12px;font-size:12px;">
-        ・NDCから：${hitNdc} 件<br>
-        ・Cコードから推定：${hitCcode} 件<br>
-        ・洋書として「外国語」：${foreign.length} 件
+        ・国会図書館サーチから：${hitNdl.toLocaleString()} 件<br>
+        ・openBDから補完：${hitOpenbd.toLocaleString()} 件<br>
+        ・洋書として「外国語」：${foreign.length.toLocaleString()} 件
       </div>
-      <div style="color:var(--text3);margin-top:6px;">openBDに情報なし：${miss} 件</div>
+      <div style="color:var(--text3);margin-top:6px;">どちらにも情報なし：${miss.toLocaleString()} 件</div>
       ${badIsbn.length ? `<div style="color:var(--yellow);">ISBNが不正で対象外：${badIsbn.length} 件</div>` : ''}
-      ${failed ? `<div style="color:var(--red);">更新に失敗：${failed} 件</div>` : ''}
+      ${_ndcFailed ? `<div style="color:var(--red);">更新に失敗：${_ndcFailed.toLocaleString()} 件</div>` : ''}
+      ${aborted ? '<div style="margin-top:8px;color:var(--text2);">ここまでの結果は保存済みです。もう一度実行すると続きから再開します。</div>' : ''}
       ${testMode && details.length ? `
         <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
           <div style="font-weight:700;margin-bottom:6px;font-size:12px;">判定結果の内訳</div>
@@ -6139,6 +6209,9 @@ async function runNdcFetch(testMode) {
     setMsg(`<span style="color:var(--red);">エラーが発生しました：${e.message || e}</span>`);
   }
   _ndcFetchRunning = false;
+  _ndcFetchAbort = false;
+  const ab = document.getElementById('ndcAbortBtn');
+  if (ab) ab.style.display = 'none';
 }
 
 // 未登録本データを一時保存
