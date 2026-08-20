@@ -1788,6 +1788,7 @@ html, body {
         <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;" onclick="runNdcFetch(true)">🧪 10件でテスト実行</button>
         <button class="btn btn-primary" style="width:100%;" onclick="runNdcFetch(false)">▶️ 全件を一括取得</button>
         <button class="btn btn-ghost" id="ndcAbortBtn" style="width:100%;margin-top:8px;display:none;color:var(--red);" onclick="abortNdcFetch()">⏸️ 中断する</button>
+        <button class="btn btn-ghost" style="width:100%;margin-top:8px;font-size:12px;" onclick="fixPictureBookCategory()">🖼️ NDC 726.5／726.6 を「絵本」に振り直す</button>
         <div id="ndcFetchResult" style="margin-top:12px;"></div>
       </div>
     </div>
@@ -2623,7 +2624,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-08-20-fix20（NDC分類一括取得：エラー詳細表示）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-08-20-fix21（NDC分類一括取得：絵本の別置対応）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -5934,6 +5935,15 @@ const NDC_CLASS_TO_CATEGORY = {
   '8':'8類：言語','9':'9類：文学'
 };
 
+// NDC番号 → カテゴリー名
+// 726.6（漫画・絵本・紙芝居）は学校図書館の別置に合わせて「絵本」に振り分ける
+function ndcToCategory(ndc) {
+  if (!ndc) return null;
+  const s = String(ndc).trim();
+  if (s.startsWith('726.6') || s.startsWith('726.5')) return '絵本';
+  return NDC_CLASS_TO_CATEGORY[s[0]] || null;
+}
+
 // 10桁ISBN → 13桁
 function isbn10to13(isbn10) {
   const core = '978' + isbn10.slice(0, 9);
@@ -5969,7 +5979,7 @@ function extractNdcFromOnix(item) {
   }
 
   if (ndc) {
-    return { ndc, category: NDC_CLASS_TO_CATEGORY[ndc[0]] || null, source: 'NDC' };
+    return { ndc, category: ndcToCategory(ndc), source: 'NDC' };
   }
   if (ccode) {
     // Cコード：2桁目=発行形態（7=絵本）、3桁目=内容の類
@@ -6052,6 +6062,47 @@ async function writeNdcUpdates(updates) {
 }
 
 function abortNdcFetch() { _ndcFetchAbort = true; }
+
+// 既に登録済みの NDC 726.5／726.6 の本を「絵本」に振り直す
+async function fixPictureBookCategory() {
+  const resultEl = document.getElementById('ndcFetchResult');
+  const setMsg = html => { if (resultEl) resultEl.innerHTML = `<div style="background:var(--bg3);border-radius:10px;padding:12px;font-size:13px;line-height:1.7;">${html}</div>`; };
+  setMsg('対象を確認中…');
+  try {
+    const ids = [];
+    const PAGE = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await db.from('books')
+        .select('id, ndc')
+        .eq('school_cd', currentSchoolCd)
+        .neq('status', 'withdrawn')
+        .neq('category', '絵本')
+        .or('ndc.like.726.5%,ndc.like.726.6%')
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      ids.push(...data.map(r => r.id));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    if (ids.length === 0) { setMsg('振り直しの対象はありませんでした。'); return; }
+    if (!confirm(`${ids.length} 件を「絵本」に変更します。よろしいですか？`)) { setMsg(''); return; }
+
+    let ok = 0, ng = 0;
+    for (let i = 0; i < ids.length; i += 200) {
+      const part = ids.slice(i, i + 200);
+      const { error } = await db.from('books').update({ category: '絵本' }).in('id', part);
+      if (error) ng += part.length; else ok += part.length;
+      setMsg(`更新中… ${Math.min(i + 200, ids.length)} / ${ids.length} 件`);
+    }
+    setMsg(`✅ 完了：${ok} 件を「絵本」に変更しました。${ng ? `<br><span style="color:var(--red);">失敗：${ng} 件</span>` : ''}`);
+    refreshNdcFetchStat();
+  } catch (e) {
+    setMsg(`<span style="color:var(--red);">エラー：${e.message || e}</span>`);
+  }
+}
 
 async function runNdcFetch(testMode) {
   if (_ndcFetchRunning) { alert('実行中です。完了までお待ちください。'); return; }
@@ -6174,7 +6225,7 @@ async function runNdcFetch(testMode) {
         let r = null;
         const ndlNdc = ndlMap ? ndlMap[b.isbn13] : null;
         if (ndlNdc) {
-          r = { ndc: ndlNdc, category: NDC_CLASS_TO_CATEGORY[String(ndlNdc)[0]] || null, source: 'NDL' };
+          r = { ndc: ndlNdc, category: ndcToCategory(ndlNdc), source: 'NDL' };
           if (r.category) hitNdl++;
         } else if (obMap[b.isbn13]) {
           r = obMap[b.isbn13];
