@@ -1481,6 +1481,7 @@ html, body {
           <button onclick="openRegNoImportModal()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📥 番号インポート</button>
           <button onclick="exportScannedRegNos()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📤 番号出力</button>
           <button onclick="openScannedListModal()" style="font-size:.8em;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:4px 12px;cursor:pointer;">📋 一覧・取り消し</button>
+          <button onclick="exportUnscannedExcel()" style="font-size:.8em;background:var(--bg3);color:var(--orange);border:1px solid var(--orange);border-radius:8px;padding:4px 12px;cursor:pointer;">📊 未確認本を出力</button>
         </div>
       </div>
       <div class="card">
@@ -8450,6 +8451,124 @@ async function exportWithdrawExcel() {
   XLSX.utils.book_append_sheet(wb, ws, '除籍リスト');
   XLSX.writeFile(wb, `除籍リスト_${schoolName}_${year}年度.xlsx`);
 }
+
+// ============================================================
+// 未確認本（点検で一度もスキャン・確認できなかった本）のExcel出力
+// ============================================================
+async function exportUnscannedExcel() {
+  if (!currentSessionId) {
+    alert('点検セッションがありません。\n点検を開始してから出力してください。');
+    return;
+  }
+  if (!confirm('現在の点検セッションで未確認の本を、Excelファイルに出力します。\n件数によっては少し時間がかかります。\n\n実行しますか？')) return;
+
+  try {
+    // ① 蔵書全体のIDを取得（除籍済みを除く）
+    let allIds = [];
+    {
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await db.from('books')
+          .select('id')
+          .eq('school_cd', currentSchoolCd)
+          .neq('status', 'withdrawn')
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allIds.push(...data.map(r => r.id));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+    }
+
+    // ② このセッションでスキャン済みのIDを取得
+    let scannedIds = new Set();
+    {
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await db.from('inventory_scanned')
+          .select('book_id')
+          .eq('session_id', currentSessionId)
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        data.forEach(r => scannedIds.add(r.book_id));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+    }
+
+    // ③ 差分（未確認）を計算
+    const unscannedIds = allIds.filter(id => !scannedIds.has(id));
+    if (unscannedIds.length === 0) {
+      alert('未確認の本はありません。すべて確認済みです。');
+      return;
+    }
+
+    // ④ 未確認本の詳細を取得（500件ずつ）
+    let unscannedBooks = [];
+    for (let i = 0; i < unscannedIds.length; i += 500) {
+      const chunk = unscannedIds.slice(i, i + 500);
+      const { data, error } = await db.from('books')
+        .select('registration_no, title, author, publisher, isbn, category, purchase_fiscal_year, delivery_date')
+        .in('id', chunk);
+      if (error) throw error;
+      unscannedBooks = unscannedBooks.concat(data || []);
+    }
+
+    // 登録番号の数値順にソート
+    unscannedBooks.sort((a, b) => (parseInt(a.registration_no) || 0) - (parseInt(b.registration_no) || 0));
+
+    // ⑤ SheetJS読み込み
+    if (!window.XLSX) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://toshositsu-aikawa.github.io/library/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    const schoolName = document.querySelector('.topbar-school')?.textContent || '';
+    const today = new Date().toLocaleDateString('ja-JP', { year:'numeric', month:'2-digit', day:'2-digit' });
+
+    const rows = [
+      [`${schoolName} 未確認本一覧（点検セッション）　出力日: ${today}`],
+      [`対象：${unscannedBooks.length.toLocaleString()}件（このセッションで一度もスキャン・確認できなかった本）`],
+      [],
+      ['No.', '登録番号', '書名', '著者', '出版社', 'カテゴリー', 'ISBN', '購入年度', '納品日'],
+      ...unscannedBooks.map((b, i) => [
+        i + 1,
+        b.registration_no || '',
+        b.title || '',
+        b.author || '',
+        b.publisher || '',
+        b.category || '',
+        b.isbn || '',
+        b.purchase_fiscal_year ? b.purchase_fiscal_year + '年度' : '',
+        b.delivery_date ? b.delivery_date.slice(0,10) : '',
+      ]),
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      {wch:5},{wch:10},{wch:35},{wch:20},{wch:18},{wch:14},{wch:14},{wch:10},{wch:12}
+    ];
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:8}}, {s:{r:1,c:0},e:{r:1,c:8}}];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '未確認本一覧');
+    XLSX.writeFile(wb, `未確認本一覧_${schoolName}_${today.replace(/\//g,'-')}.xlsx`);
+  } catch (err) {
+    console.error('未確認本出力失敗:', err);
+    alert('出力に失敗しました: ' + (err.message || err));
+  }
+}
+
 </script>
 </body>
 </html>
