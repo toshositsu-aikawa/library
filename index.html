@@ -1793,6 +1793,28 @@ html, body {
       </div>
     </div>
 
+    <!-- AI分類推定（Gemini） -->
+    <div class="card" style="margin-bottom:10px;">
+      <div onclick="toggleAccordion('acc-ai-ndc')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="font-weight:700;font-size:15px;">🤖 AI分類推定（Gemini）</div>
+        <div id="acc-ai-ndc-icon" style="color:var(--text3);font-size:18px;">›</div>
+      </div>
+      <div id="acc-ai-ndc" style="display:none;padding:0 16px 16px;">
+        <div style="font-size:.85em;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+          国会図書館サーチにも分類データがない本（主に古い本）を、書名・著者・出版社からAI（Gemini）に推定させます。<br>
+          <span style="color:var(--text3);">・対象は「カテゴリー・NDCとも未設定」の本のみ<br>
+          ・推定結果は「category」列のみに設定し、NDCの数値は設定しません<br>
+          ・どの分類が推定によるものかは記録され、後から見分けられます<br>
+          ・Supabaseの Edge Function「ndc-ai」とGEMINI_API_KEYの設定が必要です</span>
+        </div>
+        <div id="aiNdcFetchStat" style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text2);">対象件数を確認中…</div>
+        <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;" onclick="runAiNdcFetch(true)">🧪 10件でテスト実行</button>
+        <button class="btn btn-primary" style="width:100%;" onclick="runAiNdcFetch(false)">▶️ 全件をAI推定</button>
+        <button class="btn btn-ghost" id="aiNdcAbortBtn" style="width:100%;margin-top:8px;display:none;color:var(--red);" onclick="abortAiNdcFetch()">⏸️ 中断する</button>
+        <div id="aiNdcFetchResult" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
     <!-- 言語管理 -->
     <div class="card" style="margin-bottom:10px;">
       <div onclick="toggleAccordion('acc-lang')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
@@ -3374,6 +3396,7 @@ function toggleAccordion(id) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
     if (id === 'acc-ndc')   refreshNdcFetchStat();
+    if (id === 'acc-ai-ndc') refreshAiNdcFetchStat();
     if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
     if (id === 'acc-backup') {
       const el = document.getElementById('backupLastDate');
@@ -6031,6 +6054,211 @@ async function refreshNdcFetchStat() {
   } catch (e) {
     el.textContent = '件数の取得に失敗しました';
   }
+}
+
+// ============================================================
+// AI分類推定（Gemini）— NDLにも分類データがない本の推定
+// ============================================================
+async function refreshAiNdcFetchStat() {
+  const el = document.getElementById('aiNdcFetchStat');
+  if (!el) return;
+  try {
+    const { count: total } = await db.from('books')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_cd', currentSchoolCd).neq('status', 'withdrawn');
+    const { count: target } = await db.from('books')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_cd', currentSchoolCd).neq('status', 'withdrawn')
+      .is('category', null).is('ndc', null);
+    el.innerHTML = `蔵書 <b>${Number(total||0).toLocaleString()}</b> 件のうち、カテゴリー・NDCとも未設定は <b style="color:var(--yellow);">${Number(target||0).toLocaleString()}</b> 件です`;
+  } catch (e) {
+    el.textContent = '件数の取得に失敗しました';
+  }
+}
+
+let _aiNdcFetchRunning = false;
+let _aiNdcFetchAbort = false;
+
+function abortAiNdcFetch() { _aiNdcFetchAbort = true; }
+
+// Edge Function「ndc-ai」を1バッチ（最大25件）呼び出す
+// 戻り値: { id: category|null } または null（失敗）
+let _aiNdcLastError = '';
+async function fetchAiCategoryBatch(books) {
+  try {
+    const { data, error } = await db.functions.invoke('ndc-ai', {
+      body: { books: books.map(b => ({ id: b.id, title: b.title, author: b.author, publisher: b.publisher })) },
+    });
+    if (error) {
+      let detail = error.message || String(error);
+      try {
+        if (error.context && typeof error.context.text === 'function') {
+          const body = await error.context.text();
+          if (body) detail += ' / ' + body.slice(0, 300);
+        }
+      } catch (e2) {}
+      _aiNdcLastError = detail;
+      return null;
+    }
+    if (data && data.error) { _aiNdcLastError = String(data.error).slice(0, 300); return null; }
+    return (data && data.results) ? data.results : null;
+  } catch (e) {
+    _aiNdcLastError = e.message || String(e);
+    return null;
+  }
+}
+
+function sleepMs(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runAiNdcFetch(testMode) {
+  if (_aiNdcFetchRunning) { alert('実行中です。完了までお待ちください。'); return; }
+  const resultEl = document.getElementById('aiNdcFetchResult');
+  if (!resultEl) return;
+
+  if (!testMode && !confirm('カテゴリー・NDCとも未設定の本すべてについて、Gemini（AI）に分類を推定させます。\n件数によっては時間がかかります。\n途中で中断しても、次回は続きから再開できます。\n\n実行しますか？')) return;
+
+  _aiNdcFetchRunning = true;
+  _aiNdcFetchAbort = false;
+  const abortBtn = document.getElementById('aiNdcAbortBtn');
+  if (abortBtn && !testMode) abortBtn.style.display = 'block';
+  const setMsg = html => { resultEl.innerHTML = `<div style="background:var(--bg3);border-radius:10px;padding:12px;font-size:13px;line-height:1.7;">${html}</div>`; };
+  setMsg('対象の本を読み込み中…');
+
+  try {
+    // --- 1. 対象本を取得（カテゴリー・NDCとも未設定） ---
+    let targets = [];
+    const PAGE = 1000;
+
+    if (testMode) {
+      const { count } = await db.from('books')
+        .select('*', { count: 'exact', head: true })
+        .eq('school_cd', currentSchoolCd).neq('status', 'withdrawn')
+        .is('category', null).is('ndc', null);
+      const total = Number(count || 0);
+      const spots = 5, per = 4;
+      for (let s = 0; s < spots; s++) {
+        const off = total > per * spots ? Math.floor(total / spots * s) : 0;
+        const { data, error } = await db.from('books')
+          .select('id, title, author, publisher')
+          .eq('school_cd', currentSchoolCd)
+          .neq('status', 'withdrawn')
+          .is('category', null).is('ndc', null)
+          .order('id', { ascending: true })
+          .range(off, off + per - 1);
+        if (error) throw error;
+        if (data) targets.push(...data);
+        if (total <= per * spots) break;
+      }
+      targets = targets.slice(0, 10);
+    } else {
+      let from = 0;
+      while (true) {
+        if (_aiNdcFetchAbort) break;
+        setMsg(`対象の本を読み込み中… ${targets.length.toLocaleString()} 件`);
+        const { data, error } = await db.from('books')
+          .select('id, title, author, publisher')
+          .eq('school_cd', currentSchoolCd)
+          .neq('status', 'withdrawn')
+          .is('category', null).is('ndc', null)
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        targets.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+    }
+
+    if (targets.length === 0) { setMsg('対象の本はありません。'); _aiNdcFetchRunning = false; return; }
+
+    // --- 2. Geminiにバッチで問い合わせ ---
+    const BATCH = 25;
+    let written = 0, failed = 0, noResult = 0;
+    const details = [];
+    let aborted = false;
+    const started = Date.now();
+
+    for (let i = 0; i < targets.length; i += BATCH) {
+      if (_aiNdcFetchAbort) { aborted = true; break; }
+      const chunk = targets.slice(i, i + BATCH);
+
+      const resultMap = await fetchAiCategoryBatch(chunk);
+      if (resultMap === null) {
+        if (i === 0) {
+          throw new Error('AI推定（Gemini）への中継に失敗しました。<br><span style="font-size:11px;color:var(--text3);">詳細: ' + (_aiNdcLastError || '不明') + '</span>');
+        }
+        // 途中失敗は、このバッチをスキップして次へ
+        failed += chunk.length;
+      } else {
+        const updates = [];
+        chunk.forEach(b => {
+          const cat = resultMap[String(b.id)];
+          if (cat) {
+            updates.push({ id: b.id, category: cat });
+            if (testMode) details.push({ title: b.title, category: cat });
+          } else {
+            noResult++;
+            if (testMode) details.push({ title: b.title, category: null });
+          }
+        });
+        if (updates.length > 0) {
+          const results = await Promise.all(
+            updates.map(u => db.from('books').update({ category: u.category, ndc_source: 'ai_estimated' }).eq('id', u.id))
+          );
+          const failedCount = results.filter(r => r.error).length;
+          written += (updates.length - failedCount);
+          failed += failedCount;
+        }
+      }
+
+      const done = Math.min(i + BATCH, targets.length);
+      const per = (Date.now() - started) / done;
+      const left = Math.round(per * (targets.length - done) / 1000);
+      const mm = Math.floor(left / 60), ss = left % 60;
+      setMsg(`
+        <div style="font-weight:700;margin-bottom:6px;">AI推定中… ${done.toLocaleString()} / ${targets.length.toLocaleString()} 件</div>
+        <div style="background:var(--border);border-radius:4px;height:8px;margin-bottom:8px;">
+          <div style="width:${(done/targets.length*100).toFixed(1)}%;background:var(--blue);border-radius:4px;height:8px;"></div>
+        </div>
+        <div style="color:var(--green);">分類を設定：${written.toLocaleString()} 件</div>
+        <div style="color:var(--text3);">推定できず：${noResult.toLocaleString()} 件</div>
+        <div style="color:var(--text3);margin-top:4px;">残り約 ${mm}分${ss}秒</div>
+        <div style="color:var(--text3);font-size:11px;margin-top:6px;">※この画面を閉じると中断されます。途中で止めても、次回は続きから再開できます。</div>
+      `);
+
+      // Gemini無料枠（15RPM）を守るため、バッチ間に5秒空ける
+      if (i + BATCH < targets.length) await sleepMs(5000);
+    }
+
+    setMsg(`
+      <div style="font-weight:700;margin-bottom:8px;">${aborted ? '⏸️ 中断しました' : (testMode ? '🧪 テスト実行 完了' : '✅ 完了')}（対象 ${targets.length.toLocaleString()} 件）</div>
+      <div style="color:var(--green);">分類を設定：${written.toLocaleString()} 件</div>
+      <div style="color:var(--text3);margin-top:6px;">推定できず：${noResult.toLocaleString()} 件</div>
+      ${failed ? `<div style="color:var(--red);">通信・更新の失敗：${failed.toLocaleString()} 件</div>` : ''}
+      ${aborted ? '<div style="margin-top:8px;color:var(--text2);">ここまでの結果は保存済みです。もう一度実行すると続きから再開します。</div>' : ''}
+      ${testMode && details.length ? `
+        <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:12px;">判定結果の内訳</div>
+          ${details.map(d => `
+            <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+              <div style="color:var(--text1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.title || '(書名なし)'}</div>
+              <div style="color:${d.category ? 'var(--green)' : 'var(--red)'};">
+                ${d.category ? `→ ${d.category} <span style="color:var(--text3);">[AI推定]</span>` : '→ 推定できず'}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      ${testMode ? '<div style="margin-top:8px;color:var(--text2);">結果に問題がなければ「▶️ 全件をAI推定」を実行してください。</div>' : ''}
+    `);
+    refreshAiNdcFetchStat();
+    refreshNdcFetchStat();
+  } catch (e) {
+    setMsg(`<span style="color:var(--red);">エラーが発生しました：${e.message || e}</span>`);
+  }
+  _aiNdcFetchRunning = false;
+  _aiNdcFetchAbort = false;
+  const ab = document.getElementById('aiNdcAbortBtn');
+  if (ab) ab.style.display = 'none';
 }
 
 let _ndcFetchRunning = false;
