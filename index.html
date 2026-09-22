@@ -6199,7 +6199,7 @@ async function runNdcFetch(testMode) {
     foreign.forEach(b => updates.push({ id: b.id, ndc: null, category: '外国語', language: b.language || '英語' }));
 
     const started = Date.now();
-    const BATCH = 50;
+    const BATCH = 8; // NDL側のレート制限対策で1件ずつ直列処理するようになったため、Edge Functionのタイムアウトを避けて件数を縮小
     for (let i = 0; i < queryable.length; i += BATCH) {
       if (_ndcFetchAbort) { aborted = true; break; }
       const chunk = queryable.slice(i, i + BATCH);
