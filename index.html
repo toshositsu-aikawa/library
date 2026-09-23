@@ -8287,6 +8287,12 @@ async function handleImportFile(input) {
         const priceRaw = row[getCol('price')];
         if (priceRaw && !isNaN(parseInt(priceRaw))) bookData.price = parseInt(priceRaw);
 
+        // fix22：Excelのカテゴリー列が空欄の場合、既存のNDC由来の分類（NDL取得・AI推定・複本流用）を
+        // 空文字やnullで上書きしてしまわないよう保護する。Excel側に実際の値がある場合のみ上書きする。
+        if (existing && (bookData.category === null || bookData.category === '') && existing.category) {
+          bookData.category = existing.category;
+        }
+
         try {
           if (existing) {
             if (isDifferent(existing, bookData)) {
