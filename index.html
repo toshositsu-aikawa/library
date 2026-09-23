@@ -1181,10 +1181,10 @@ html, body {
 
     <!-- 統計 -->
     <div class="stat-grid">
-      <div class="stat-box blue">
+      <div class="stat-box blue" style="grid-column:1/-1;">
         <div class="stat-num" id="statTitles">…</div>
-        <div class="stat-label">総蔵書数（タイトル）</div>
-        <div class="stat-sub" style="color:var(--text3);">読込中</div>
+        <div class="stat-label">総蔵書数</div>
+        <div class="stat-sub" style="color:var(--text3);">登録番号ごとに1冊（除籍を除く）</div>
       </div>
       <div class="stat-box green" onclick="openLentModal()" style="cursor:pointer;">
         <div class="stat-num" id="statLent">…</div>
@@ -1195,11 +1195,6 @@ html, body {
         <div class="stat-num" id="statOverdue">…</div>
         <div class="stat-label">延滞中</div>
         <div class="stat-sub" style="color:var(--red);">タップで一覧</div>
-      </div>
-      <div class="stat-box yellow">
-        <div class="stat-num" id="statCopies">…</div>
-        <div class="stat-label">総所蔵冊数</div>
-        <div class="stat-sub" style="color:var(--text3);">複数冊含む</div>
       </div>
     </div>
 
@@ -1621,10 +1616,6 @@ html, body {
       <div class="section-header-row">
         <div class="section-title-text">蔵書構成（NDC分類別）</div>
         <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px;" onclick="loadCollectionComposition(currentSchoolCd)">🔄 更新</button>
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:10px;">
-        <button class="btn btn-primary" id="ccBtn-titles" style="flex:1;font-size:12px;" onclick="setCompositionMode('titles')">件数</button>
-        <button class="btn btn-ghost" id="ccBtn-copies" style="flex:1;font-size:12px;" onclick="setCompositionMode('copies')">冊数</button>
       </div>
       <div class="card" style="margin-bottom:16px;" id="collectionComposition">
         <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
@@ -2647,7 +2638,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-08-20-fix21（NDC分類一括取得：絵本の別置対応）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-09-23-fix22（総蔵書数の表示を一本化・AI分類推定・未確認本出力）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -4176,11 +4167,11 @@ async function loadAllSchoolStats() {
   const { data: statsData } = await db.from('school_stats').select('*');
   if (!statsData) return;
 
-  // 合計をヘッダーのstat-boxに反映
-  const totalCopies  = statsData.reduce((s, r) => s + Number(r.total_copies  || 0), 0);
+  // 合計をヘッダーのstat-boxに反映（総蔵書数は登録番号ごとに1冊で数える）
+  const holdingsMap  = await countHoldingsAllSchools();
+  const totalCopies  = Object.values(holdingsMap).reduce((s, v) => s + Number(v || 0), 0);
   const totalLent    = statsData.reduce((s, r) => s + Number(r.currently_lent || 0), 0);
-  const totalTitles  = statsData.reduce((s, r) => s + Number(r.total_titles   || 0), 0);
-  if (el('statsTotal'))         el('statsTotal').textContent         = totalTitles.toLocaleString();
+  if (el('statsTotal'))         el('statsTotal').textContent         = totalCopies.toLocaleString();
   if (el('statsMonthLent'))     el('statsMonthLent').textContent     = totalLent;
   if (el('statsMonthReturned')) el('statsMonthReturned').textContent = '—';
   if (el('statsOverdue'))       el('statsOverdue').textContent       = '—';
@@ -4193,11 +4184,13 @@ async function loadAllSchoolStats() {
   const tbody = el('allSchoolTableBody');
   const tfoot = el('allSchoolTableFoot');
   if (tbody) {
-    const sorted = [...statsData].sort((a, b) => Number(b.total_copies || 0) - Number(a.total_copies || 0));
+    const sorted = [...statsData]
+      .filter(s => s.school_cd in holdingsMap)
+      .sort((a, b) => Number(holdingsMap[b.school_cd] || 0) - Number(holdingsMap[a.school_cd] || 0));
     tbody.innerHTML = sorted.map(s => `
       <tr style="border-bottom:1px solid var(--border);">
         <td style="padding:10px 12px;font-weight:500;">${nameMap[s.school_cd] || s.school_cd}</td>
-        <td style="text-align:right;padding:10px 8px;color:var(--blue);">${Number(s.total_copies || 0).toLocaleString()}</td>
+        <td style="text-align:right;padding:10px 8px;color:var(--blue);">${holdingsMap[s.school_cd] == null ? '—' : Number(holdingsMap[s.school_cd]).toLocaleString()}</td>
         <td style="text-align:right;padding:10px 8px;color:var(--green);">${Number(s.currently_lent || 0)}</td>
       </tr>`).join('');
     if (tfoot) tfoot.innerHTML = `
@@ -4438,8 +4431,9 @@ function renderCollectionComposition() {
   const el = document.getElementById('collectionComposition');
   if (!el || !_compositionData) return;
   const counts = _compositionData;
-  const key = _compositionMode;
-  const unit = key === 'copies' ? '冊' : '件';
+  // fix22：数え方は登録番号ごとに1冊（レコード数）、表示単位は「冊」に統一
+  const key = 'titles';
+  const unit = '冊';
 
   // 表示順に並べ、未知のカテゴリーは末尾（未設定の前）に寄せる
   const known = NDC_DISPLAY_ORDER.filter(c => counts[c]);
@@ -4474,7 +4468,7 @@ function renderCollectionComposition() {
       <svg viewBox="0 0 160 160" style="width:180px;height:180px;">
         ${arcs}
         <text x="80" y="74" text-anchor="middle" style="font-size:22px;font-weight:700;fill:var(--text1);font-family:'JetBrains Mono',monospace;">${total.toLocaleString()}</text>
-        <text x="80" y="92" text-anchor="middle" style="font-size:11px;fill:var(--text3);">${unit === '冊' ? '総冊数' : '総件数'}</text>
+        <text x="80" y="92" text-anchor="middle" style="font-size:11px;fill:var(--text3);">総冊数</text>
       </svg>
     </div>`;
 
@@ -4566,6 +4560,29 @@ async function loadStatsPage(schoolCd) {
 }
 
 // ============================================================
+// 総蔵書数（fix22：表示を一本化）
+// 登録番号ごとに1冊＝除籍以外の蔵書レコード数。点検画面の「総冊数」と同じ数え方
+// ============================================================
+async function countHoldings(schoolCd) {
+  const { count, error } = await db.from('books')
+    .select('*', { count: 'exact', head: true })
+    .eq('school_cd', schoolCd)
+    .neq('status', 'withdrawn');
+  if (error) throw error;
+  return count || 0;
+}
+
+async function countHoldingsAllSchools() {
+  const list = await Promise.all(SCHOOLS.map(async s => {
+    try { return { cd: s.cd, count: await countHoldings(s.cd) }; }
+    catch (e) { return { cd: s.cd, count: null }; }
+  }));
+  const map = {};
+  list.forEach(r => { map[r.cd] = r.count; });
+  return map;
+}
+
+// ============================================================
 // 学校統計の読み込み
 // ============================================================
 async function loadStats(schoolCd, retryCount = 0) {
@@ -4584,8 +4601,12 @@ async function loadStats(schoolCd, retryCount = 0) {
   }
 
   const el = id => document.getElementById(id)
-  if (el('statTitles'))  el('statTitles').textContent  = Number(data.total_titles || 0).toLocaleString()
-  if (el('statCopies'))  el('statCopies').textContent  = Number(data.total_copies || 0).toLocaleString()
+  try {
+    const holdings = await countHoldings(schoolCd);
+    if (el('statTitles')) el('statTitles').textContent = holdings.toLocaleString()
+  } catch (e) {
+    if (el('statTitles')) el('statTitles').textContent = '—'
+  }
   if (el('statLent'))    el('statLent').textContent    = data.currently_lent || 0
   if (el('statOverdue')) el('statOverdue').textContent = data.overdue_count  || 0
 
@@ -5020,13 +5041,12 @@ async function returnToMySchool() {
 
 // 学校モーダルを開くときに冊数を読み込む
 async function loadSchoolCounts() {
-  const { data } = await db.from('school_stats').select('school_cd,total_copies');
-  if (!data) return;
+  const holdingsMap = await countHoldingsAllSchools();
   let total = 0;
-  data.forEach(s => {
-    const el = document.getElementById('cnt-' + s.school_cd);
-    if (el) el.textContent = Number(s.total_copies).toLocaleString() + '冊';
-    total += Number(s.total_copies || 0);
+  Object.entries(holdingsMap).forEach(([cd, cnt]) => {
+    const el = document.getElementById('cnt-' + cd);
+    if (el) el.textContent = cnt == null ? '—' : Number(cnt).toLocaleString() + '冊';
+    total += Number(cnt || 0);
   });
   const cntAll = document.getElementById('cnt-all');
   if (cntAll) cntAll.textContent = '合計 ' + total.toLocaleString() + '冊';
