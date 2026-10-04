@@ -1779,6 +1779,34 @@ html, body {
       </div>
     </div>
 
+    <!-- fix26：紙台帳データの取り込み -->
+    <div class="card" style="margin-bottom:10px;">
+      <div onclick="toggleAccordion('acc-ledger')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="font-weight:700;font-size:15px;">📜 紙台帳データの取り込み</div>
+        <div id="acc-ledger-icon" style="color:var(--text3);font-size:18px;">›</div>
+      </div>
+      <div id="acc-ledger" style="display:none;padding:0 16px 16px;">
+        <div style="font-size:.85em;color:var(--text2);line-height:1.7;margin-bottom:12px;">
+          紙の台帳（2008年以前など）をExcelに入力したデータを「台帳データ」として保存します。<br>
+          <span style="color:var(--text3);">・蔵書の冊数・統計・点検には<b>数えません</b>（蔵書とは別の保管場所です）<br>
+          ・登録番号が同じものだけを照合し、書名では一致させません<br>
+          ・確定前にプレビューで件数と問題のある行を確認できます<br>
+          ・取り込みは後から取り消せます</span>
+        </div>
+        <div id="ledgerSummary" style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text2);">確認中…</div>
+        <button class="btn btn-primary" style="width:100%;" onclick="openLedgerImportModal()">📥 台帳のExcelを取り込む</button>
+        <div id="ledgerBatchList" style="margin-top:14px;"></div>
+        <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">🔎 取り込んだ台帳を検索</div>
+          <div style="display:flex;gap:8px;">
+            <input class="form-input" id="ledgerSearchInput" type="text" placeholder="登録番号 または 書名の一部" style="flex:1;" onkeydown="if(event.key==='Enter')ledgerSearch()" />
+            <button class="btn btn-ghost" onclick="ledgerSearch()">検索</button>
+          </div>
+          <div id="ledgerSearchResult" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- 分類（NDC）一括取得 -->
     <div class="card" style="margin-bottom:10px;">
       <div onclick="toggleAccordion('acc-ndc')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
@@ -2338,6 +2366,17 @@ html, body {
   </div>
 </div>
 
+<!-- fix26：紙台帳データ取り込みモーダル -->
+<div class="modal-overlay" id="ledgerImportModal" onclick="closeModalOutside(event,'ledgerImportModal')">
+  <div class="modal" style="max-width:760px;max-height:90vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <div class="modal-title">📜 紙台帳データの取り込み</div>
+      <button class="modal-close" onclick="closeModal('ledgerImportModal')">✕</button>
+    </div>
+    <div class="modal-body" id="ledgerModalBody" style="flex:1;overflow-y:auto;"></div>
+  </div>
+</div>
+
 <!-- 登録番号インポートモーダル（スプレッドシート→点検セッション） -->
 <div class="modal-overlay" id="regNoImportModal" onclick="closeModalOutside(event,'regNoImportModal')">
   <div class="modal" style="max-width:520px;max-height:85vh;display:flex;flex-direction:column;">
@@ -2673,7 +2712,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-10-04-fix25（バーコード印刷の改善：余白・実寸固定・Code128B・読み取りテスト）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-10-04-fix26（紙台帳データの取り込み：ledger_books・列対応づけ・プレビュー・取り消し）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -3427,6 +3466,7 @@ function toggleAccordion(id) {
     if (id === 'acc-rooms') loadRoomShelfList();
     if (id === 'acc-lang')  loadLanguageList();
     if (id === 'acc-ndc')   refreshNdcFetchStat();
+    if (id === 'acc-ledger') refreshLedgerSummary();   // fix26
     if (id === 'acc-ai-ndc') refreshAiNdcFetchStat();
     if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
     if (id === 'acc-backup') {
@@ -8943,6 +8983,574 @@ async function handleImportFile(input) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+// fix26：紙台帳データの取り込み（ledger_books テーブル）
+// ・蔵書（books）には一切触れない別テーブル。蔵書数・統計・点検に影響しない
+// ・照合は登録番号のみ（書名では一致させない）／何度取り込んでも二重登録されない
+// ============================================================
+const LEDGER_FIELDS = [
+  { key: 'registration_no', label: '登録番号', required: true,  aliases: ['登録番号','登録no','登録№','受入番号','図書番号','登録ｎｏ'] },
+  { key: 'title',           label: '書名',     required: true,  aliases: ['書名','書名・巻次','題名','タイトル','図書名'] },
+  { key: 'author',          label: '著者',     aliases: ['著者','著者名','編著者','作者'] },
+  { key: 'publisher',       label: '出版者',   aliases: ['出版者','出版社','発行所','発行者','発行元'] },
+  { key: 'accession_date',  label: '受入日',   aliases: ['受入日','受入年月日','登録日','購入日','受入年月','年月日','日付'] },
+  { key: 'price',           label: '価格',     aliases: ['価格','定価','金額','値段'] },
+  { key: 'class_no',        label: '分類記号', aliases: ['分類記号','分類番号','分類','ndc','請求記号'] },
+  { key: 'isbn',            label: 'ISBN',     aliases: ['isbn'] },
+  { key: 'remarks',         label: '備考',     aliases: ['備考','摘要','除籍','寄贈','注記'] },
+];
+const LEDGER_ERA = { '明治': 1867, '大正': 1911, '昭和': 1925, '平成': 1988, '令和': 2018, M: 1867, T: 1911, S: 1925, H: 1988, R: 2018 };
+let _ledger = null;   // 取り込み作業中の状態
+
+const ledgerEsc = x => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const ledgerNorm = x => String(x == null ? '' : x).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+
+function ledgerColLetter(i) {
+  let n = i + 1, out = '';
+  while (n > 0) { const m = (n - 1) % 26; out = String.fromCharCode(65 + m) + out; n = Math.floor((n - 1) / 26); }
+  return out;
+}
+
+// セルの値 → 文字列（日付はISO、数値はそのまま）
+function ledgerCellText(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date) {
+    if (isNaN(v)) return '';
+    const d = new Date(v.getTime() + 12 * 3600 * 1000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  return String(v).trim();
+}
+
+// ---- 日付の解析（西暦・和暦・Excelシリアル値）。空→undefined／解析不能→null ----
+function ledgerMakeDate(y, mo, d) {
+  if (!y || y < 1868 || y > 2100) return null;
+  if (mo == null) return { date: null, year: y };
+  if (mo < 1 || mo > 12) return null;
+  if (d == null) return { date: null, year: y };   // 年月だけのときは日付を確定せず、年のみ保持（元の表記はraw_rowに残る）
+  if (d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCMonth() !== mo - 1) return null;
+  return { date: `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`, year: y };
+}
+function ledgerParseDate(v) {
+  if (v === '' || v == null) return undefined;
+  if (v instanceof Date) {
+    if (isNaN(v)) return null;
+    const d = new Date(v.getTime() + 12 * 3600 * 1000);   // 時刻のずれで前日になるのを防ぐ
+    return ledgerMakeDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+  if (typeof v === 'number') {
+    if (Number.isInteger(v) && v >= 1868 && v <= 2100) return { date: null, year: v };   // 年だけ
+    if (v >= 1000 && v < 80000) {                                                         // Excelシリアル値
+      const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+      return ledgerMakeDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+    }
+    return null;
+  }
+  const s = String(v).normalize('NFKC').trim();
+  if (!s) return undefined;
+  let m = s.match(/^(\d{4})(\d{2})(\d{2})$/);                                   // 19930401
+  if (m) return ledgerMakeDate(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{4})\s*(?:[.\-\/年]\s*(\d{1,2})?\s*(?:[.\-\/月]\s*(\d{1,2})?\s*日?)?)?$/);   // 1993/4/1・1993年4月1日
+  if (m) return ledgerMakeDate(+m[1], m[2] ? +m[2] : null, m[3] ? +m[3] : null);
+  m = s.match(/^(明治|大正|昭和|平成|令和|[MTSHR])\s*(元|\d{1,2})\s*(?:[.\-\/年]\s*(\d{1,2})?\s*(?:[.\-\/月]\s*(\d{1,2})?\s*日?)?)?$/i);   // S63.3.10・昭和63年3月10日
+  if (m) {
+    const base = LEDGER_ERA[m[1]] || LEDGER_ERA[m[1].toUpperCase()];
+    const ey = m[2] === '元' ? 1 : +m[2];
+    if (!base || ey < 1) return null;
+    return ledgerMakeDate(base + ey, m[3] ? +m[3] : null, m[4] ? +m[4] : null);
+  }
+  return null;
+}
+function ledgerParsePrice(v) {
+  if (v === '' || v == null) return undefined;
+  const m = String(v).normalize('NFKC').replace(/,/g, '').match(/\d+/);
+  return m ? parseInt(m[0], 10) : null;
+}
+
+// ---- ヘッダー行・列の自動判定 ----
+function ledgerDetectHeaderRow(rows) {
+  const kw = ['登録', '書名', '題名', 'タイトル', '著者', '出版', '発行', '価格', '定価', '受入', '分類', 'isbn', '備考', '摘要'];
+  let best = 0, bestScore = -1;
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const score = (rows[i] || []).map(ledgerNorm).filter(c => c && kw.some(k => c.includes(k))).length;
+    if (score > bestScore) { bestScore = score; best = i; }
+  }
+  return bestScore > 0 ? best : 0;
+}
+function ledgerGuessMap(headers) {
+  const map = {}, used = new Set();
+  const normH = headers.map(ledgerNorm);
+  // 先に「完全一致」、次に「含む」の順で割り当てる（「登録日」を登録番号と取り違えないため）
+  for (const mode of ['exact', 'contains']) {
+    for (const f of LEDGER_FIELDS) {
+      if (map[f.key] != null) continue;
+      for (const a of f.aliases) {
+        const na = ledgerNorm(a);
+        const idx = normH.findIndex((h, i) => !used.has(i) && h && (mode === 'exact' ? h === na : h.includes(na)));
+        if (idx !== -1) { map[f.key] = idx; used.add(idx); break; }
+      }
+    }
+  }
+  return map;
+}
+
+// ---- 行の解析（プレビュー・取り込み共通）。照合前の純粋な処理 ----
+function ledgerProcessRows(rows, headerIdx, rowOffset, map) {
+  const good = [], errors = [], dups = [];
+  const warn = { date: [], price: [], isbn: [] };
+  const seen = new Map();
+  const headers = (rows[headerIdx] || []).map(h => ledgerCellText(h));
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    if (!r.some(c => c !== '' && c != null)) continue;   // 完全な空行
+    const excelRow = rowOffset + i + 1;
+    const cell = k => (map[k] == null ? '' : r[map[k]]);
+    const regNo = normalizeRegNo(ledgerCellText(cell('registration_no')).normalize('NFKC'));   // 全角数字・全角英字を半角にそろえる
+    const title = ledgerCellText(cell('title')).replace(/\s+/g, ' ').trim();
+    if (!regNo) { errors.push({ excelRow, reason: '登録番号が空', regNo: '', title, cells: r }); continue; }
+    if (!title) { errors.push({ excelRow, reason: '書名が空', regNo, title: '', cells: r }); continue; }
+    if (seen.has(regNo)) { dups.push({ excelRow, reason: `ファイル内で重複（${seen.get(regNo)}行目が先）`, regNo, title, cells: r }); continue; }
+    seen.set(regNo, excelRow);
+
+    const dateRes = ledgerParseDate(cell('accession_date'));
+    if (dateRes === null) warn.date.push({ excelRow, raw: ledgerCellText(cell('accession_date')) });
+    const priceRes = ledgerParsePrice(cell('price'));
+    if (priceRes === null) warn.price.push({ excelRow, raw: ledgerCellText(cell('price')) });
+    let isbn = null;
+    const isbnRaw = ledgerCellText(cell('isbn')).replace(/[-\s]/g, '');
+    if (isbnRaw) {
+      isbn = normalizeIsbn13(isbnRaw);
+      if (!isbn) warn.isbn.push({ excelRow, raw: isbnRaw });
+    }
+    const str = k => ledgerCellText(cell(k)).replace(/\s+/g, ' ').trim() || null;
+
+    const raw = { _excel_row: excelRow };
+    r.forEach((v, c) => {
+      const t = ledgerCellText(v);
+      if (t === '') return;
+      let key = headers[c] || `列${ledgerColLetter(c)}`;
+      if (key in raw) key = `${key}(${ledgerColLetter(c)})`;
+      raw[key] = t;
+    });
+
+    good.push({
+      excelRow, cells: r,
+      registration_no: regNo, title,
+      author: str('author'), publisher: str('publisher'),
+      isbn,
+      price: (typeof priceRes === 'number') ? priceRes : null,
+      accession_date: dateRes ? dateRes.date : null,
+      accession_year: dateRes ? dateRes.year : null,
+      class_no: str('class_no'), remarks: str('remarks'),
+      raw_row: raw,
+    });
+  }
+  return { good, errors, dups, warn };
+}
+
+// ---- 画面：開く／ステップ1（ファイル選択） ----
+function ledgerSchoolName() {
+  return (SCHOOLS.find(sc => sc.cd === currentSchoolCd) || {}).name || currentSchoolCd;
+}
+function ledgerCheckTarget() {
+  if (isStudentMode) return false;
+  if (!currentSchoolCd || currentSchoolCd === 'all' || currentSchoolCd === 'admin' || !SCHOOLS.some(sc => sc.cd === currentSchoolCd)) {
+    alert('学校を1校選んだ状態で実行してください。\n（右上の学校名から取り込み先の学校を選びます）');
+    return false;
+  }
+  return true;
+}
+function openLedgerImportModal() {
+  if (!ledgerCheckTarget()) return;
+  _ledger = { step: 1, schoolCd: currentSchoolCd, fileName: '', wb: null, sheetName: '', rows: [], rowOffset: 0, headerIdx: 0, map: {}, result: null, preview: null };
+  ledgerRender();
+  openModal('ledgerImportModal');
+}
+function ledgerRender() {
+  const body = document.getElementById('ledgerModalBody');
+  if (!body || !_ledger) return;
+  const head = `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;">
+    取り込み先：<b style="color:var(--blue);font-size:15px;">${ledgerEsc(SCHOOLS.find(sc => sc.cd === _ledger.schoolCd)?.name || _ledger.schoolCd)}</b>
+    <span style="color:var(--text3);">　（違う学校なら閉じて、学校を切り替えてからやり直してください）</span></div>`;
+  if (_ledger.step === 1) {
+    body.innerHTML = head + `
+      <div style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:12px;">
+        台帳を入力したExcelファイル（.xlsx / .xls / .csv）を選んでください。<br>
+        <span style="color:var(--text3);">列の並びは学校ごとに違っていてかまいません。次の画面で「どの列が何か」を指定します。</span>
+      </div>
+      <input type="file" id="ledgerFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="ledgerHandleFile(this)">
+      <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('ledgerFileInput').click()">📂 Excelファイルを選ぶ</button>
+      <div id="ledgerFileMsg" style="margin-top:10px;font-size:13px;color:var(--text3);"></div>`;
+  } else if (_ledger.step === 2) {
+    ledgerRenderMapping(head);
+  } else if (_ledger.step === 3) {
+    ledgerRenderPreview(head);
+  } else if (_ledger.step === 4) {
+    body.innerHTML = head + (_ledger.resultHtml || '');
+  }
+}
+
+// ---- ステップ1→2：ファイル読み込み ----
+async function ledgerEnsureXlsx() {
+  if (window.XLSX) return;
+  await new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://toshositsu-aikawa.github.io/library/xlsx.full.min.js';
+    sc.onload = res; sc.onerror = () => rej(new Error('Excel読み込み部品（SheetJS）を読み込めませんでした'));
+    document.head.appendChild(sc);
+  });
+}
+async function ledgerHandleFile(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  const msg = document.getElementById('ledgerFileMsg');
+  if (msg) msg.textContent = '⏳ 読み込み中…';
+  try {
+    await ledgerEnsureXlsx();
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    _ledger.wb = wb;
+    _ledger.fileName = file.name;
+    ledgerLoadSheet(wb.SheetNames[0]);
+    _ledger.step = 2;
+    ledgerRender();
+  } catch (e) {
+    console.error(e);
+    if (msg) msg.innerHTML = `<span style="color:var(--red);">❌ 読み込めませんでした：${ledgerEsc(e.message || e)}</span>`;
+  }
+}
+function ledgerLoadSheet(name) {
+  const ws = _ledger.wb.Sheets[name];
+  _ledger.sheetName = name;
+  const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0 }, e: { r: -1 } };
+  _ledger.rowOffset = ref.s.r;
+  _ledger.rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+  _ledger.headerIdx = ledgerDetectHeaderRow(_ledger.rows);
+  const headers = (_ledger.rows[_ledger.headerIdx] || []).map(ledgerCellText);
+  _ledger.map = ledgerGuessMap(headers);
+}
+
+// ---- ステップ2：列の対応づけ ----
+function ledgerRenderMapping(head) {
+  const body = document.getElementById('ledgerModalBody');
+  const L = _ledger;
+  const headers = (L.rows[L.headerIdx] || []).map(ledgerCellText);
+  const nCols = Math.max(headers.length, ...L.rows.slice(L.headerIdx, L.headerIdx + 8).map(r => (r || []).length), 1);
+  const colOpts = (sel) => {
+    let h = `<option value="">（使わない）</option>`;
+    for (let c = 0; c < nCols; c++) {
+      const label = `列${ledgerColLetter(c)}：${headers[c] ? headers[c] : '（見出しなし）'}`;
+      h += `<option value="${c}" ${sel === c ? 'selected' : ''}>${ledgerEsc(label)}</option>`;
+    }
+    return h;
+  };
+  const sheetSel = L.wb.SheetNames.length > 1
+    ? `<div style="margin-bottom:10px;"><label class="form-label">シート</label>
+        <select class="form-input" onchange="ledgerChangeSheet(this.value)">${L.wb.SheetNames.map(n => `<option ${n === L.sheetName ? 'selected' : ''}>${ledgerEsc(n)}</option>`).join('')}</select></div>`
+    : '';
+  const headerExcelRow = L.headerIdx + L.rowOffset + 1;
+  const mapRows = LEDGER_FIELDS.map(f => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:84px;font-size:13px;font-weight:700;flex-shrink:0;">${f.label}${f.required ? '<span style="color:var(--red);">＊</span>' : ''}</div>
+      <select class="form-input" id="ledgerMap-${f.key}" style="flex:1;min-width:0;">${colOpts(L.map[f.key])}</select>
+    </div>`).join('');
+  const prevRows = L.rows.slice(L.headerIdx, L.headerIdx + 7);
+  const prevTable = `<div style="overflow-x:auto;border:1px solid var(--border2);border-radius:8px;margin:6px 0 14px;">
+    <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;">
+      <thead><tr><th style="padding:4px 8px;background:var(--bg3);"></th>${Array.from({ length: nCols }, (_, c) => `<th style="padding:4px 8px;background:var(--bg3);color:var(--text3);">${ledgerColLetter(c)}</th>`).join('')}</tr></thead>
+      <tbody>${prevRows.map((r, i) => `<tr style="${i === 0 ? 'background:var(--bg3);font-weight:700;' : ''}">
+        <td style="padding:4px 8px;color:var(--text3);">${L.rowOffset + L.headerIdx + i + 1}</td>
+        ${Array.from({ length: nCols }, (_, c) => `<td style="padding:4px 8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;">${ledgerEsc(ledgerCellText((r || [])[c]))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>`;
+  body.innerHTML = head + `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px;">ファイル：${ledgerEsc(L.fileName)}（読み込んだ行数：${L.rows.length}）</div>
+    ${sheetSel}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="font-size:13px;font-weight:700;">見出しの行</div>
+      <input class="form-input" type="number" id="ledgerHeaderRow" value="${headerExcelRow}" min="1" style="width:90px;" onchange="ledgerChangeHeaderRow(this.value)">
+      <div style="font-size:12px;color:var(--text3);">（Excelの行番号。下の表の太字の行が見出しです）</div>
+    </div>
+    ${prevTable}
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;">どの列が何かを指定してください <span style="font-weight:400;color:var(--text3);">（自動で推測済み。＊は必須）</span></div>
+    ${mapRows}
+    <div id="ledgerMapMsg" style="color:var(--red);font-size:13px;margin:8px 0;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="_ledger.step=1;ledgerRender()">← ファイルを選び直す</button>
+      <button class="btn btn-primary" style="flex:2;" onclick="ledgerGoPreview()">🔍 プレビューを作る</button>
+    </div>`;
+}
+function ledgerChangeSheet(name) { ledgerLoadSheet(name); ledgerRender(); }
+function ledgerChangeHeaderRow(v) {
+  const n = parseInt(v, 10);
+  if (!n) return;
+  const idx = n - _ledger.rowOffset - 1;
+  if (idx < 0 || idx >= _ledger.rows.length) return;
+  _ledger.headerIdx = idx;
+  _ledger.map = ledgerGuessMap((_ledger.rows[idx] || []).map(ledgerCellText));
+  ledgerRender();
+}
+function ledgerReadMapFromUi() {
+  const map = {};
+  LEDGER_FIELDS.forEach(f => {
+    const v = document.getElementById('ledgerMap-' + f.key)?.value;
+    if (v !== '' && v != null) map[f.key] = parseInt(v, 10);
+  });
+  return map;
+}
+
+// ---- ステップ2→3：照合してプレビュー ----
+async function ledgerFetchRegNoSet(table, schoolCd) {
+  const set = new Set();
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await db.from(table).select('registration_no')
+      .eq('school_cd', schoolCd).order('registration_no', { ascending: true }).range(from, from + PAGE - 1);
+    if (error) throw error;
+    (data || []).forEach(r => { const k = normalizeRegNo(r.registration_no); if (k) set.add(k); });
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return set;
+}
+function ledgerIsMissingTable(e) {
+  const t = `${e && e.code} ${e && e.message}`;
+  return /42P01|PGRST205|ledger_books/.test(t) && /42P01|PGRST205|does not exist|schema cache|Could not find/i.test(t);
+}
+async function ledgerGoPreview() {
+  const L = _ledger;
+  const msg = document.getElementById('ledgerMapMsg');
+  const map = ledgerReadMapFromUi();
+  if (map.registration_no == null || map.title == null) { msg.textContent = '「登録番号」と「書名」の列は必ず指定してください'; return; }
+  if (map.registration_no === map.title) { msg.textContent = '登録番号と書名に同じ列が指定されています'; return; }
+  L.map = map;
+  msg.style.color = 'var(--text3)';
+  msg.textContent = '⏳ 照合中…（既存の蔵書・取り込み済みの台帳と登録番号を比べています）';
+  try {
+    const proc = ledgerProcessRows(L.rows, L.headerIdx, L.rowOffset, map);
+    const [inBooks, inLedger] = await Promise.all([
+      ledgerFetchRegNoSet('books', L.schoolCd),
+      ledgerFetchRegNoSet('ledger_books', L.schoolCd),
+    ]);
+    const fresh = [], skipBooks = [], skipLedger = [];
+    proc.good.forEach(g => {
+      if (inBooks.has(g.registration_no)) skipBooks.push(Object.assign({ reason: 'すでに蔵書にある登録番号' }, g));
+      else if (inLedger.has(g.registration_no)) skipLedger.push(Object.assign({ reason: 'すでに台帳として取り込み済み' }, g));
+      else fresh.push(g);
+    });
+    L.preview = { fresh, skipBooks, skipLedger, errors: proc.errors, dups: proc.dups, warn: proc.warn };
+    L.step = 3;
+    ledgerRender();
+  } catch (e) {
+    console.error(e);
+    msg.style.color = 'var(--red)';
+    msg.textContent = ledgerIsMissingTable(e)
+      ? '台帳用のテーブル（ledger_books）がまだありません。Supabaseで fix26 のSQLを実行してください。'
+      : '照合に失敗しました：' + (e.message || e);
+  }
+}
+
+// ---- ステップ3：プレビュー表示 ----
+function ledgerRenderPreview(head) {
+  const body = document.getElementById('ledgerModalBody');
+  const P = _ledger.preview;
+  const cnt = (n, label, color) => `<div style="background:var(--bg3);border-radius:10px;padding:10px 12px;text-align:center;">
+    <div style="font-size:22px;font-weight:700;color:${color};font-family:'JetBrains Mono',monospace;">${n.toLocaleString()}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:2px;">${label}</div></div>`;
+  const problemList = (arr, title, color) => arr.length === 0 ? '' : `
+    <div style="margin-top:12px;">
+      <div style="font-size:13px;font-weight:700;color:${color};margin-bottom:4px;">${title}（${arr.length}件）</div>
+      <div style="overflow-x:auto;border:1px solid var(--border2);border-radius:8px;">
+      <table style="border-collapse:collapse;font-size:12px;width:100%;">
+        <tbody>${arr.slice(0, 15).map(x => `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:4px 8px;color:var(--text3);white-space:nowrap;">${x.excelRow}行</td>
+          <td style="padding:4px 8px;white-space:nowrap;">${ledgerEsc(x.reason)}</td>
+          <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace;">${ledgerEsc(x.registration_no || x.regNo || '')}</td>
+          <td style="padding:4px 8px;">${ledgerEsc((x.title || '').slice(0, 30))}</td></tr>`).join('')}
+          ${arr.length > 15 ? `<tr><td colspan="4" style="padding:4px 8px;color:var(--text3);">…ほか ${arr.length - 15}件（下のボタンでExcelに書き出せます）</td></tr>` : ''}
+        </tbody></table></div></div>`;
+  const warnItems = [];
+  if (P.warn.date.length) warnItems.push(`受入日を読み取れなかった行：${P.warn.date.length}件（例：${P.warn.date.slice(0, 3).map(w => `${w.excelRow}行「${ledgerEsc(w.raw)}」`).join('、')}）`);
+  if (P.warn.price.length) warnItems.push(`価格を読み取れなかった行：${P.warn.price.length}件`);
+  if (P.warn.isbn.length) warnItems.push(`ISBNとして読み取れなかった行：${P.warn.isbn.length}件`);
+  const warnHtml = warnItems.length ? `<div style="background:var(--bg3);border-left:3px solid var(--yellow);border-radius:8px;padding:10px 12px;margin-top:12px;font-size:12px;line-height:1.7;color:var(--text2);">
+      ⚠️ ${warnItems.join('<br>⚠️ ')}<br><span style="color:var(--text3);">これらの行も取り込みます（読み取れなかった項目は空欄になり、元の表記は「元データ」として保存されます）</span></div>` : '';
+  const sample = P.fresh.slice(0, 6);
+  const sampleHtml = sample.length ? `<div style="margin-top:12px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:4px;">取り込まれる内容の例（先頭${sample.length}件）</div>
+      <div style="overflow-x:auto;border:1px solid var(--border2);border-radius:8px;">
+      <table style="border-collapse:collapse;font-size:12px;white-space:nowrap;">
+        <thead><tr style="background:var(--bg3);">${['登録番号', '書名', '著者', '出版者', '受入日', '価格'].map(h => `<th style="padding:4px 8px;text-align:left;">${h}</th>`).join('')}</tr></thead>
+        <tbody>${sample.map(g => `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace;">${ledgerEsc(g.registration_no)}</td>
+          <td style="padding:4px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${ledgerEsc(g.title)}</td>
+          <td style="padding:4px 8px;">${ledgerEsc(g.author || '')}</td>
+          <td style="padding:4px 8px;">${ledgerEsc(g.publisher || '')}</td>
+          <td style="padding:4px 8px;">${ledgerEsc(g.accession_date || (g.accession_year ? g.accession_year + '年' : ''))}</td>
+          <td style="padding:4px 8px;text-align:right;">${g.price != null ? g.price.toLocaleString() : ''}</td></tr>`).join('')}</tbody>
+      </table></div></div>` : '';
+  const nSkipped = P.errors.length + P.dups.length + P.skipBooks.length + P.skipLedger.length;
+  const schoolName = SCHOOLS.find(sc => sc.cd === _ledger.schoolCd)?.name || _ledger.schoolCd;
+  body.innerHTML = head + `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px;">ファイル：${ledgerEsc(_ledger.fileName)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;">
+      ${cnt(P.fresh.length, '新しく取り込む', 'var(--green)')}
+      ${cnt(P.skipBooks.length, 'すでに蔵書にある', 'var(--blue)')}
+      ${cnt(P.skipLedger.length, '取り込み済み', 'var(--text2)')}
+      ${cnt(P.dups.length, 'ファイル内で重複', 'var(--yellow)')}
+      ${cnt(P.errors.length, '番号・書名が空', 'var(--red)')}
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.7;">
+      「すでに蔵書にある」「取り込み済み」「重複」「空」の行は取り込みません（既存のデータは一切変更しません）。
+    </div>
+    ${warnHtml}${sampleHtml}
+    ${problemList(P.errors, '登録番号または書名が空の行', 'var(--red)')}
+    ${problemList(P.dups, 'ファイル内で登録番号が重複している行', 'var(--yellow)')}
+    ${nSkipped ? `<button class="btn btn-ghost" style="width:100%;margin-top:12px;font-size:13px;" onclick="ledgerDownloadSkipped()">📥 取り込まない行をExcelに書き出す（直して再取り込みできます）</button>` : ''}
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="_ledger.step=2;ledgerRender()">← 列の指定に戻る</button>
+      <button class="btn btn-success" style="flex:2;font-weight:700;" ${P.fresh.length ? '' : 'disabled'} onclick="ledgerCommit()">✅ ${ledgerEsc(schoolName)}の台帳として ${P.fresh.length.toLocaleString()}件を取り込む</button>
+    </div>`;
+}
+function ledgerDownloadSkipped() {
+  const P = _ledger.preview;
+  const all = [].concat(P.errors, P.dups, P.skipBooks, P.skipLedger).sort((a, b) => a.excelRow - b.excelRow);
+  const headers = (_ledger.rows[_ledger.headerIdx] || []).map(ledgerCellText);
+  const aoa = [['Excel行', '取り込まない理由', ...headers]];
+  all.forEach(x => aoa.push([x.excelRow, x.reason, ...(x.cells || []).map(ledgerCellText)]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '取り込まない行');
+  XLSX.writeFile(wb, `台帳_取り込まない行_${_ledger.schoolCd}.xlsx`);
+}
+
+// ---- ステップ3→4：取り込み確定 ----
+async function ledgerCommit() {
+  const L = _ledger, P = L.preview;
+  if (!P || P.fresh.length === 0) return;
+  if (L.schoolCd !== currentSchoolCd) { alert('学校が切り替わっています。最初からやり直してください。'); return; }
+  const schoolName = SCHOOLS.find(sc => sc.cd === L.schoolCd)?.name || L.schoolCd;
+  if (!confirm(`${schoolName}の台帳データとして ${P.fresh.length.toLocaleString()}件を取り込みます。\n（蔵書の冊数・統計には数えません。後から取り消せます）\nよろしいですか？`)) return;
+
+  const now = new Date();
+  const p2 = n => String(n).padStart(2, '0');
+  const batch = `LB-${now.getFullYear()}${p2(now.getMonth() + 1)}${p2(now.getDate())}-${p2(now.getHours())}${p2(now.getMinutes())}${p2(now.getSeconds())}`;
+  const payload = P.fresh.map(g => ({
+    school_cd: L.schoolCd,
+    registration_no: g.registration_no, title: g.title, author: g.author, publisher: g.publisher,
+    isbn: g.isbn, price: g.price, accession_date: g.accession_date, accession_year: g.accession_year,
+    class_no: g.class_no, remarks: g.remarks, raw_row: g.raw_row,
+    source_file: L.fileName, import_batch: batch,
+  }));
+
+  const body = document.getElementById('ledgerModalBody');
+  const CHUNK = 300;
+  let done = 0;
+  try {
+    for (let i = 0; i < payload.length; i += CHUNK) {
+      body.innerHTML = `<div style="text-align:center;padding:40px 10px;color:var(--text2);font-size:14px;">⏳ 取り込み中…（${Math.min(i + CHUNK, payload.length).toLocaleString()} / ${payload.length.toLocaleString()}）<br><span style="font-size:12px;color:var(--text3);">この画面を閉じずにお待ちください</span></div>`;
+      const { error } = await db.from('ledger_books')
+        .upsert(payload.slice(i, i + CHUNK), { onConflict: 'school_cd,registration_no', ignoreDuplicates: true });
+      if (error) throw error;
+      done = Math.min(i + CHUNK, payload.length);
+    }
+    L.resultHtml = `
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;font-size:14px;line-height:1.8;">
+        <div style="font-weight:700;color:var(--green);margin-bottom:4px;">✅ 取り込みました（${done.toLocaleString()}件）</div>
+        <div style="font-size:12px;color:var(--text3);">取り込みID：<span style="font-family:'JetBrains Mono',monospace;">${batch}</span><br>
+        間違えたときは、設定の「📜 紙台帳データの取り込み」の一覧から、この取り込みごと取り消せます。</div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="closeModal('ledgerImportModal')">閉じる</button>`;
+  } catch (e) {
+    console.error(e);
+    L.resultHtml = `
+      <div style="background:var(--bg3);border-left:3px solid var(--red);border-radius:8px;padding:14px;font-size:13px;line-height:1.8;">
+        <div style="font-weight:700;color:var(--red);">❌ 途中で止まりました：${ledgerEsc(e.message || e)}</div>
+        <div>${done.toLocaleString()}件までは取り込み済みです。<br>同じファイルをもう一度取り込めば、続きから取り込めます（二重登録にはなりません）。</div>
+      </div>
+      <button class="btn btn-ghost" style="width:100%;margin-top:14px;" onclick="closeModal('ledgerImportModal')">閉じる</button>`;
+  }
+  L.step = 4;
+  ledgerRender();
+  refreshLedgerSummary();
+}
+
+// ---- 設定画面：件数・取り込み履歴・取り消し・検索 ----
+async function refreshLedgerSummary() {
+  const sumEl = document.getElementById('ledgerSummary');
+  const listEl = document.getElementById('ledgerBatchList');
+  if (!sumEl || !listEl) return;
+  const cd = currentSchoolCd;
+  if (!cd || cd === 'all' || cd === 'admin') {
+    sumEl.textContent = '学校を1校選ぶと、その学校の台帳データが表示されます';
+    listEl.innerHTML = '';
+    return;
+  }
+  const schoolName = SCHOOLS.find(sc => sc.cd === cd)?.name || cd;
+  try {
+    const { count, error } = await db.from('ledger_books')
+      .select('*', { count: 'exact', head: true }).eq('school_cd', cd).eq('status', 'pending');
+    if (error) throw error;
+    sumEl.innerHTML = `<b>${ledgerEsc(schoolName)}</b>の台帳データ：<b style="color:var(--blue);font-size:15px;">${Number(count || 0).toLocaleString()}</b> 件<span style="color:var(--text3);">（蔵書の冊数には含まれません）</span>`;
+    const { data: batches, error: e2 } = await db.rpc('ledger_batches', { p_school: cd });
+    if (e2) throw e2;
+    listEl.innerHTML = (batches && batches.length) ? `
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px;">取り込み履歴</div>
+      ${batches.map(b => `<div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:10px;padding:8px 12px;margin-bottom:6px;font-size:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'JetBrains Mono',monospace;">${ledgerEsc(b.import_batch)}　<b>${Number(b.cnt).toLocaleString()}件</b></div>
+          <div style="color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ledgerEsc(b.source_file || '')}</div>
+        </div>
+        <button class="btn btn-ghost" style="font-size:12px;color:var(--red);padding:6px 10px;" onclick="ledgerDeleteBatch('${ledgerEsc(b.import_batch)}', ${Number(b.cnt)})">取り消す</button>
+      </div>`).join('')}` : '';
+  } catch (e) {
+    console.warn('台帳サマリー取得失敗', e);
+    sumEl.innerHTML = ledgerIsMissingTable(e)
+      ? '⚠️ 台帳用のテーブルがまだありません。Supabaseで fix26 のSQLを実行してください。'
+      : '読み込みに失敗しました：' + ledgerEsc(e.message || e);
+    listEl.innerHTML = '';
+  }
+}
+async function ledgerDeleteBatch(batch, n) {
+  const cd = currentSchoolCd;
+  if (!cd || cd === 'all' || cd === 'admin') return;
+  if (!confirm(`取り込み ${batch}（${n.toLocaleString()}件）を取り消します。\n台帳データだけが消え、蔵書には影響しません。\nよろしいですか？`)) return;
+  const { error } = await db.from('ledger_books').delete()
+    .eq('school_cd', cd).eq('import_batch', batch).eq('status', 'pending');
+  if (error) { alert('取り消せませんでした：' + error.message); return; }
+  refreshLedgerSummary();
+}
+async function ledgerSearch() {
+  const el = document.getElementById('ledgerSearchResult');
+  const q = document.getElementById('ledgerSearchInput')?.value.trim();
+  const cd = currentSchoolCd;
+  if (!el) return;
+  if (!q) { el.innerHTML = ''; return; }
+  if (!cd || cd === 'all' || cd === 'admin') { el.innerHTML = '<div style="color:var(--text3);font-size:12px;">学校を1校選んでください</div>'; return; }
+  el.innerHTML = '<div style="color:var(--text3);font-size:12px;">⏳ 検索中…</div>';
+  let query = db.from('ledger_books')
+    .select('registration_no, title, author, publisher, accession_date, accession_year, price, remarks')
+    .eq('school_cd', cd).limit(50);
+  const nq = normalizeRegNo(q);
+  query = /^\d+$/.test(nq) ? query.eq('registration_no', nq) : query.ilike('title', `%${q.replace(/[%_,()]/g, '')}%`);
+  const { data, error } = await query.order('registration_no', { ascending: true });
+  if (error) { el.innerHTML = `<div style="color:var(--red);font-size:12px;">${ledgerEsc(error.message)}</div>`; return; }
+  if (!data || data.length === 0) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;">見つかりませんでした</div>'; return; }
+  el.innerHTML = `<div style="overflow-x:auto;border:1px solid var(--border2);border-radius:8px;">
+    <table style="border-collapse:collapse;font-size:12px;white-space:nowrap;width:100%;">
+      <thead><tr style="background:var(--bg3);">${['登録番号', '書名', '著者', '受入', '備考'].map(h => `<th style="padding:4px 8px;text-align:left;">${h}</th>`).join('')}</tr></thead>
+      <tbody>${data.map(r => `<tr style="border-top:1px solid var(--border);">
+        <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace;">${ledgerEsc(r.registration_no)}</td>
+        <td style="padding:4px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${ledgerEsc(r.title)}</td>
+        <td style="padding:4px 8px;">${ledgerEsc(r.author || '')}</td>
+        <td style="padding:4px 8px;">${ledgerEsc(r.accession_date || (r.accession_year ? r.accession_year + '年' : ''))}</td>
+        <td style="padding:4px 8px;">${ledgerEsc(r.remarks || '')}</td></tr>`).join('')}</tbody>
+    </table></div>${data.length >= 50 ? '<div style="font-size:11px;color:var(--text3);margin-top:4px;">先頭50件を表示しています</div>' : ''}`;
 }
 
 async function exportBackupExcel() {
