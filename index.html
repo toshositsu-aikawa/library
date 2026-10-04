@@ -1490,6 +1490,23 @@ html, body {
 </div>
 
 <!-- ============================================================
+     SCREEN ADMIN: 管理者ダッシュボード（fix23・adminログイン時のみ）
+     ============================================================ -->
+<div class="screen" id="screen-admin">
+  <div class="topbar">
+    <div class="topbar-title">🏛️ 管理者ダッシュボード</div>
+    <div class="topbar-right">
+      <div class="icon-btn" onclick="loadAdminDashboard()" title="再読み込み">🔄</div>
+    </div>
+  </div>
+  <div class="scroll-content">
+    <div id="adminDashBody">
+      <div style="text-align:center;color:var(--text3);padding:40px 20px;font-size:14px;">読み込み中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
      SCREEN 4: 統計
      ============================================================ -->
 <div class="screen" id="screen-stats">
@@ -1893,6 +1910,11 @@ html, body {
      BOTTOM TAB BAR
      ============================================================ -->
 <div class="tab-bar">
+  <div class="tab-item" id="tab-admin" style="display:none;" onclick="switchTab('admin')">
+    <div class="tab-indicator"></div>
+    <div class="tab-icon">🏛️</div>
+    <div class="tab-label">管理</div>
+  </div>
   <div class="tab-item active" id="tab-home" onclick="switchTab('home')">
     <div class="tab-indicator"></div>
     <div class="tab-icon">🏠</div>
@@ -2638,7 +2660,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-09-23-fix22（総蔵書数の表示を一本化・AI分類推定・未確認本出力）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-10-04-fix23（管理者ダッシュボード追加・総蔵書数の表示を一本化・AI分類推定・未確認本出力）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -3028,6 +3050,7 @@ async function doLogin() {
   const schoolCd = data.user?.user_metadata?.school_cd;
   const schoolName = data.user?.user_metadata?.school_name;
   const role = data.user?.user_metadata?.role;
+  hideAdminUI();   // fix23：前のログインの管理画面状態をリセット（adminの場合は下で再表示）
   if (schoolCd) {
     loginSchoolCd = schoolCd;
     if (role === 'admin') {
@@ -3043,6 +3066,7 @@ async function doLogin() {
   }
 
   document.getElementById('loginScreen').classList.add('hidden');
+  if (role === 'admin') showAdminUI();   // fix23：管理者は管理者ダッシュボードから開始
   await loadStats(currentSchoolCd);
   await loadBooks(currentSchoolCd);
   updateGuestMode(currentSchoolCd);
@@ -3122,6 +3146,7 @@ db.auth.onAuthStateChange(async (event, session) => {
         document.querySelectorAll('.topbar-school').forEach(el => el.textContent = '高峰小学校');
         const allCard = document.getElementById('allSchoolCard');
         if (allCard) allCard.style.display = '';
+        showAdminUI();   // fix23
       } else {
         currentSchoolCd = schoolCd;
         document.querySelectorAll('.topbar-school').forEach(el => el.textContent = schoolName);
@@ -4502,6 +4527,209 @@ function renderCollectionComposition() {
   el.innerHTML = `<div style="padding:14px 16px;">${donut}${bars}${warn}</div>`;
 }
 
+// ============================================================
+// fix23：管理者ダッシュボード
+// 町全体／小学校6校／中学校3校の蔵書冊数と、NDC分類別の割合
+// 数え方は fix22 と同じ（除籍を除く、登録番号ごとに1冊）。集計はSQL関数 admin_collection_stats() で行う
+// ※ TDZ対策：早期に呼ばれうるため状態は let ではなく window のプロパティで持つ
+// ============================================================
+function showAdminUI() {
+  const tab = document.getElementById('tab-admin');
+  if (tab) tab.style.display = '';
+  // ログイン直後に1回だけ管理画面へ移動（その後のセッション更新イベントでは移動しない）
+  if (!window._adminLanded) {
+    window._adminLanded = true;
+    switchTab('admin');
+  }
+}
+
+function hideAdminUI() {
+  window._adminLanded = false;
+  const tab = document.getElementById('tab-admin');
+  if (tab) tab.style.display = 'none';
+  if (document.getElementById('screen-admin')?.classList.contains('active')) switchTab('home');
+}
+
+function adminEsc(str) {
+  return String(str).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+
+// 分類別カウント { cat: n } からドーナツ＋割合バーのHTMLを作る
+function adminBuildCompositionHtml(counts) {
+  const known  = NDC_DISPLAY_ORDER.filter(c => c !== '未設定' && counts[c]);
+  const others = Object.keys(counts).filter(c => !NDC_DISPLAY_ORDER.includes(c) && counts[c]);
+  const cats   = known.concat(others).concat(counts['未設定'] ? ['未設定'] : []);
+  const total  = cats.reduce((sum, c) => sum + counts[c], 0);
+  if (total === 0) {
+    return '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">蔵書データがありません</div>';
+  }
+
+  const R = 60, CIRC = 2 * Math.PI * R;
+  let offset = 0;
+  const arcs = cats.map(c => {
+    const len = counts[c] / total * CIRC;
+    const seg = `<circle cx="80" cy="80" r="${R}" fill="none"
+      stroke="${NDC_CHART_COLORS[c] || '#7a8090'}" stroke-width="28"
+      stroke-dasharray="${len.toFixed(2)} ${(CIRC - len).toFixed(2)}"
+      stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 80 80)"></circle>`;
+    offset += len;
+    return seg;
+  }).join('');
+
+  const donut = `
+    <div style="display:flex;justify-content:center;margin-bottom:8px;">
+      <svg viewBox="0 0 160 160" style="width:190px;height:190px;">
+        ${arcs}
+        <text x="80" y="74" text-anchor="middle" style="font-size:22px;font-weight:700;fill:var(--text1);font-family:'JetBrains Mono',monospace;">${total.toLocaleString()}</text>
+        <text x="80" y="92" text-anchor="middle" style="font-size:11px;fill:var(--text3);">冊</text>
+      </svg>
+    </div>`;
+
+  const max = Math.max(...cats.map(c => counts[c]));
+  const bars = cats.map(c => {
+    const v = counts[c];
+    const pct = v / total * 100;
+    const w = max ? (v / max * 100) : 0;
+    const color = NDC_CHART_COLORS[c] || '#7a8090';
+    return `<div style="margin-bottom:9px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px;gap:8px;">
+        <span style="color:var(--text1);font-weight:500;display:flex;align-items:center;gap:6px;min-width:0;">
+          <span style="width:10px;height:10px;border-radius:3px;background:${color};flex-shrink:0;"></span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${adminEsc(c)}</span>
+        </span>
+        <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;">
+          <b style="color:var(--text1);font-size:13px;">${pct.toFixed(1)}%</b>
+          <span style="color:var(--text3);">　${v.toLocaleString()}冊</span>
+        </span>
+      </div>
+      <div style="background:var(--border);border-radius:4px;height:8px;">
+        <div style="width:${w.toFixed(1)}%;background:${color};border-radius:4px;height:8px;"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const unsetPct = counts['未設定'] ? counts['未設定'] / total * 100 : 0;
+  const warn = unsetPct >= 10
+    ? `<div style="background:var(--bg3);border-left:3px solid var(--yellow);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12px;color:var(--text2);line-height:1.6;">
+         ⚠️ 未設定が ${unsetPct.toFixed(1)}% あります
+       </div>`
+    : '';
+
+  return `<div style="padding:14px 16px;">${donut}${bars}${warn}</div>`;
+}
+
+async function loadAdminDashboard() {
+  if (loginSchoolCd !== 'admin') return;
+  const body = document.getElementById('adminDashBody');
+  if (!body) return;
+  if (window._adminDashBusy) return;
+  window._adminDashBusy = true;
+  body.innerHTML = '<div style="text-align:center;color:var(--text3);padding:40px 20px;font-size:14px;">読み込み中…</div>';
+
+  try {
+    const { data, error } = await db.rpc('admin_collection_stats');
+    if (error) throw error;
+
+    const bySchool = {};
+    const elemCounts = {}, jhsCounts = {};
+    let elemTotal = 0, jhsTotal = 0;
+    (data || []).forEach(r => {
+      const cd  = String(r.school_cd);
+      const cat = (r.category && String(r.category).trim()) ? String(r.category).trim() : '未設定';
+      const n   = Number(r.cnt) || 0;
+      if (ELEM_CDS.includes(cd)) {
+        elemCounts[cat] = (elemCounts[cat] || 0) + n;
+        elemTotal += n;
+      } else if (JHS_CDS.includes(cd)) {
+        jhsCounts[cat] = (jhsCounts[cat] || 0) + n;
+        jhsTotal += n;
+      } else {
+        return; // 対象9校以外のコードは集計に含めない
+      }
+      bySchool[cd] = (bySchool[cd] || 0) + n;
+    });
+    const townTotal = elemTotal + jhsTotal;
+
+    const schoolRow = s => `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:9px 12px;">${adminEsc(s.name)}</td>
+        <td style="text-align:right;padding:9px 12px;font-family:'JetBrains Mono',monospace;color:var(--blue);">${Number(bySchool[s.cd] || 0).toLocaleString()}</td>
+      </tr>`;
+    const subRow = (label, n) => `
+      <tr style="background:var(--bg3);border-bottom:1px solid var(--border);">
+        <td style="padding:9px 12px;font-weight:700;">${label}</td>
+        <td style="text-align:right;padding:9px 12px;font-family:'JetBrains Mono',monospace;font-weight:700;">${n.toLocaleString()}</td>
+      </tr>`;
+    const elemSchools = SCHOOLS.filter(s => ELEM_CDS.includes(s.cd));
+    const jhsSchools  = SCHOOLS.filter(s => JHS_CDS.includes(s.cd));
+
+    const now = new Date();
+    const stamp = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')} 時点`;
+
+    body.innerHTML = `
+      <div class="card" style="text-align:center;padding:22px 16px;border:2px solid var(--blue);">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">🏘️ 町全体の蔵書冊数（9校合計）</div>
+        <div style="font-size:48px;font-weight:700;color:var(--blue);font-family:'JetBrains Mono',monospace;line-height:1.1;">${townTotal.toLocaleString()}<span style="font-size:18px;margin-left:4px;">冊</span></div>
+        <div style="font-size:12px;color:var(--text3);margin-top:8px;">除籍を除く・登録番号ごとに1冊　／　${stamp}</div>
+        <div style="display:flex;justify-content:center;gap:28px;margin-top:14px;font-size:13px;color:var(--text2);">
+          <div>小学校6校<br><b style="font-size:20px;color:var(--text1);font-family:'JetBrains Mono',monospace;">${elemTotal.toLocaleString()}</b> 冊</div>
+          <div>中学校3校<br><b style="font-size:20px;color:var(--text1);font-family:'JetBrains Mono',monospace;">${jhsTotal.toLocaleString()}</b> 冊</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;">
+        <div class="card">
+          <div class="card-header">
+            <h2>🏫 小学校6校　分類別の割合</h2>
+            <div class="card-header-right" style="font-family:'JetBrains Mono',monospace;color:var(--blue);font-weight:700;">${elemTotal.toLocaleString()}冊</div>
+          </div>
+          ${adminBuildCompositionHtml(elemCounts)}
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>🏫 中学校3校　分類別の割合</h2>
+            <div class="card-header-right" style="font-family:'JetBrains Mono',monospace;color:var(--blue);font-weight:700;">${jhsTotal.toLocaleString()}冊</div>
+          </div>
+          ${adminBuildCompositionHtml(jhsCounts)}
+        </div>
+      </div>
+
+      <div class="section-header-row">
+        <div class="section-title-text">学校別の蔵書冊数</div>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border2);">
+              <th style="text-align:left;padding:10px 12px;color:var(--text2);font-weight:600;">学校</th>
+              <th style="text-align:right;padding:10px 12px;color:var(--blue);font-weight:600;">蔵書冊数</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${elemSchools.map(schoolRow).join('')}
+            ${subRow('小学校 計', elemTotal)}
+            ${jhsSchools.map(schoolRow).join('')}
+            ${subRow('中学校 計', jhsTotal)}
+            ${subRow('町全体 合計', townTotal)}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    console.error('管理者ダッシュボード読み込み失敗', e);
+    const missing = e && (e.code === 'PGRST202' || /admin_collection_stats|function/i.test(e.message || ''));
+    body.innerHTML = `
+      <div class="card" style="padding:20px 16px;text-align:center;">
+        <div style="color:var(--red);font-size:14px;margin-bottom:8px;">読み込みに失敗しました</div>
+        <div style="color:var(--text2);font-size:12px;line-height:1.7;margin-bottom:12px;">
+          ${missing ? 'SQL関数 admin_collection_stats が見つかりません。Supabaseで fix23 のSQLを実行してください。' : adminEsc((e && e.message) || '通信エラー')}
+        </div>
+        <button class="btn btn-primary" onclick="loadAdminDashboard()">再読み込み</button>
+      </div>`;
+  } finally {
+    window._adminDashBusy = false;
+  }
+}
+
 async function loadStatsPage(schoolCd) {
   if (schoolCd === 'all') {
     await loadAllSchoolStats();
@@ -4879,6 +5107,7 @@ async function doLogout() {
   isStudentMode = false;
   loginSchoolCd = null;
   currentSchoolCd = null;
+  hideAdminUI();   // fix23
   setTimeout(() => document.getElementById('loginBarcodeInput')?.focus(), 100);
 }
 
@@ -4904,6 +5133,10 @@ function switchTab(tab) {
       const el = document.getElementById('backupLastDate');
       if (el) el.textContent = `前回のバックアップ: ${backupDates[currentSchoolCd] || '—'}`;
     }
+  }
+
+  if (tab === 'admin') {
+    loadAdminDashboard();
   }
 
   if (tab === 'stats') {
