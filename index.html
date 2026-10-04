@@ -2660,7 +2660,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-10-04-fix23（管理者ダッシュボード追加・総蔵書数の表示を一本化・AI分類推定・未確認本出力）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-10-04-fix24（管理者ダッシュボード拡充：点検進捗・学校別×分類・貸出状況）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -4618,6 +4618,209 @@ function adminBuildCompositionHtml(counts) {
   return `<div style="padding:14px 16px;">${donut}${bars}${warn}</div>`;
 }
 
+// ---- fix24：学校別の点検進捗（今年度・本番セッション） ----
+async function adminLoadInventoryProgress() {
+  const fy = getCurrentFiscalYear();
+  const out = {};
+  await Promise.all(SCHOOLS.map(async sc => {
+    try {
+      // 既存の点検画面と同じく、最初に作られた本番セッションを対象にする
+      const { data, error } = await db.from('inventory_sessions')
+        .select('id, started_at')
+        .eq('school_cd', sc.cd)
+        .eq('fiscal_year', fy)
+        .eq('is_test', false)
+        .order('started_at', { ascending: true })
+        .limit(1);
+      if (error) throw error;
+      if (!data || data.length === 0) { out[sc.cd] = { state: 'none' }; return; }
+      const { count, error: e2 } = await db.from('inventory_scanned')
+        .select('*', { count: 'exact', head: true })
+        .eq('session_id', data[0].id);
+      if (e2) throw e2;
+      out[sc.cd] = { state: 'active', scanned: count || 0 };
+    } catch (e) {
+      console.warn('点検進捗の取得に失敗', sc.cd, e);
+      out[sc.cd] = { state: 'error' };
+    }
+  }));
+  return out;
+}
+
+function adminBuildProgressHtml(progress, bySchool) {
+  const cell = 'padding:9px 10px;text-align:right;font-family:\'JetBrains Mono\',monospace;';
+  const row = sc => {
+    const pr = progress[sc.cd] || { state: 'error' };
+    const total = Number(bySchool[sc.cd] || 0);
+    let status, scanned = '—', unscanned = '—', pctCell = '';
+    if (pr.state === 'active') {
+      const sc2 = pr.scanned;
+      const un = Math.max(0, total - sc2);
+      const pct = total > 0 ? Math.min(100, sc2 / total * 100) : 0;
+      status = '<span style="color:var(--green);">● 実施中</span>';
+      scanned = sc2.toLocaleString();
+      unscanned = un.toLocaleString();
+      pctCell = `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+          <div style="width:56px;background:var(--border);border-radius:4px;height:8px;">
+            <div style="width:${pct.toFixed(1)}%;background:var(--green);border-radius:4px;height:8px;"></div>
+          </div>
+          <b style="min-width:42px;">${pct.toFixed(1)}%</b>
+        </div>`;
+    } else if (pr.state === 'none') {
+      status = '<span style="color:var(--text3);">未開始</span>';
+      pctCell = '<span style="color:var(--text3);">—</span>';
+    } else {
+      status = '<span style="color:var(--red);">取得できません</span>';
+      pctCell = '<span style="color:var(--text3);">—</span>';
+    }
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:9px 12px;white-space:nowrap;">${adminEsc(sc.name)}</td>
+      <td style="padding:9px 10px;white-space:nowrap;font-size:12px;">${status}</td>
+      <td style="${cell}">${total.toLocaleString()}</td>
+      <td style="${cell}color:var(--green);">${scanned}</td>
+      <td style="${cell}color:var(--yellow);">${unscanned}</td>
+      <td style="${cell}">${pctCell}</td>
+    </tr>`;
+  };
+  return `<div class="card" style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:520px;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border2);color:var(--text2);font-weight:600;">
+          <th style="text-align:left;padding:10px 12px;">学校</th>
+          <th style="text-align:left;padding:10px 10px;">状況</th>
+          <th style="text-align:right;padding:10px 10px;">蔵書</th>
+          <th style="text-align:right;padding:10px 10px;color:var(--green);">確認済</th>
+          <th style="text-align:right;padding:10px 10px;color:var(--yellow);">未確認</th>
+          <th style="text-align:right;padding:10px 10px;">進捗</th>
+        </tr>
+      </thead>
+      <tbody>${SCHOOLS.map(row).join('')}</tbody>
+    </table>
+    <div style="padding:8px 12px 12px;font-size:11px;color:var(--text3);line-height:1.6;">
+      未確認 ＝ 蔵書冊数 − 確認済み（点検画面と同じ計算）
+    </div>
+  </div>`;
+}
+
+// ---- fix24：学校別の貸出状況（school_stats を利用） ----
+function adminBuildLendingHtml(rows) {
+  if (!rows) {
+    return '<div class="card" style="padding:16px;text-align:center;color:var(--text3);font-size:13px;">貸出状況を取得できませんでした</div>';
+  }
+  const map = {};
+  rows.forEach(r => { map[String(r.school_cd)] = r; });
+  let totLent = 0, totOver = 0;
+  const cell = 'padding:9px 12px;text-align:right;font-family:\'JetBrains Mono\',monospace;';
+  const body = SCHOOLS.map(sc => {
+    const r = map[sc.cd] || {};
+    const lent = Number(r.currently_lent || 0);
+    const over = Number(r.overdue_count || 0);
+    totLent += lent; totOver += over;
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:9px 12px;">${adminEsc(sc.name)}</td>
+      <td style="${cell}color:var(--green);">${lent.toLocaleString()}</td>
+      <td style="${cell}${over > 0 ? 'color:var(--red);font-weight:700;' : 'color:var(--text3);'}">${over.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="card" style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border2);font-weight:600;">
+          <th style="text-align:left;padding:10px 12px;color:var(--text2);">学校</th>
+          <th style="text-align:right;padding:10px 12px;color:var(--green);">貸出中</th>
+          <th style="text-align:right;padding:10px 12px;color:var(--red);">延滞</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+      <tfoot>
+        <tr style="border-top:2px solid var(--border2);background:var(--bg2);">
+          <td style="padding:10px 12px;font-weight:700;">町全体 合計</td>
+          <td style="${cell}color:var(--green);font-weight:700;">${totLent.toLocaleString()}</td>
+          <td style="${cell}color:${totOver > 0 ? 'var(--red)' : 'var(--text3)'};font-weight:700;">${totOver.toLocaleString()}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>`;
+}
+
+// ---- fix24：学校別 × 分類のクロス表 ----
+function adminSetCrossMode(mode) {
+  window._adminCrossMode = mode;
+  adminUpdateCrossButtons();
+  const box = document.getElementById('adminCrossBox');
+  if (box) box.innerHTML = adminBuildCrossHtml();
+}
+
+function adminUpdateCrossButtons() {
+  const mode = window._adminCrossMode || 'pct';
+  ['pct', 'cnt'].forEach(m => {
+    const btn = document.getElementById('adminXBtn-' + m);
+    if (btn) btn.className = 'btn ' + (m === mode ? 'btn-primary' : 'btn-ghost');
+  });
+}
+
+function adminBuildCrossHtml() {
+  const d = window._adminCross;
+  if (!d) return '<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">データがありません</div>';
+  const mode = window._adminCrossMode || 'pct';
+  const { schoolCat, bySchool } = d;
+
+  // 行（分類）：どこかの学校に1冊でもある分類だけを、既定の表示順で
+  const present = new Set();
+  Object.values(schoolCat).forEach(m => Object.keys(m).forEach(c => present.add(c)));
+  const known  = NDC_DISPLAY_ORDER.filter(c => c !== '未設定' && present.has(c));
+  const others = [...present].filter(c => !NDC_DISPLAY_ORDER.includes(c));
+  const cats   = known.concat(others).concat(present.has('未設定') ? ['未設定'] : []);
+
+  const short = nm => nm.replace('小学校', '小').replace('中学校', '中');
+  const townTot = SCHOOLS.reduce((sum, sc) => sum + Number(bySchool[sc.cd] || 0), 0);
+  const townCat = c => SCHOOLS.reduce((sum, sc) => sum + Number((schoolCat[sc.cd] || {})[c] || 0), 0);
+
+  const th = 'padding:8px 8px;text-align:right;white-space:nowrap;font-weight:600;font-size:12px;';
+  const head = `<tr style="border-bottom:2px solid var(--border2);color:var(--text2);">
+    <th style="position:sticky;left:0;background:var(--bg2);text-align:left;padding:8px 10px;white-space:nowrap;z-index:1;">分類</th>
+    ${SCHOOLS.map(sc => `<th style="${th}">${adminEsc(short(sc.name))}</th>`).join('')}
+    <th style="${th}color:var(--blue);">町全体</th>
+  </tr>`;
+
+  const cellBase = 'padding:7px 8px;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:12px;white-space:nowrap;';
+  const body = cats.map(c => {
+    const color = NDC_CHART_COLORS[c] || '#7a8090';
+    const cells = SCHOOLS.map(sc => {
+      const n = Number((schoolCat[sc.cd] || {})[c] || 0);
+      const tot = Number(bySchool[sc.cd] || 0);
+      const pct = tot > 0 ? n / tot * 100 : 0;
+      const heat = mode === 'pct' ? Math.min(0.35, pct / 45) : 0;   // 割合が高いほど背景を濃く
+      const txt = mode === 'pct' ? (n ? pct.toFixed(1) + '%' : '—') : (n ? n.toLocaleString() : '—');
+      return `<td style="${cellBase}background:rgba(74,144,217,${heat.toFixed(3)});">${txt}</td>`;
+    }).join('');
+    const tn = townCat(c);
+    const tp = townTot > 0 ? tn / townTot * 100 : 0;
+    const ttxt = mode === 'pct' ? (tn ? tp.toFixed(1) + '%' : '—') : (tn ? tn.toLocaleString() : '—');
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="position:sticky;left:0;background:var(--bg2);padding:7px 10px;white-space:nowrap;font-size:12px;z-index:1;">
+        <span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${color};margin-right:6px;"></span>${adminEsc(c)}
+      </td>
+      ${cells}
+      <td style="${cellBase}font-weight:700;color:var(--blue);">${ttxt}</td>
+    </tr>`;
+  }).join('');
+
+  const foot = `<tr style="border-top:2px solid var(--border2);background:var(--bg3);">
+    <td style="position:sticky;left:0;background:var(--bg3);padding:8px 10px;font-weight:700;white-space:nowrap;z-index:1;">合計（冊）</td>
+    ${SCHOOLS.map(sc => `<td style="${cellBase}font-weight:700;">${Number(bySchool[sc.cd] || 0).toLocaleString()}</td>`).join('')}
+    <td style="${cellBase}font-weight:700;color:var(--blue);">${townTot.toLocaleString()}</td>
+  </tr>`;
+
+  const note = mode === 'pct'
+    ? '各学校の蔵書に占める割合（縦に足すと100％）。色が濃いほど割合が高い'
+    : '除籍を除く冊数（登録番号ごとに1冊）';
+  return `<table style="width:100%;border-collapse:collapse;min-width:760px;">
+      <thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot>
+    </table>
+    <div style="padding:8px 12px 12px;font-size:11px;color:var(--text3);line-height:1.6;">${note}</div>`;
+}
+
 async function loadAdminDashboard() {
   if (loginSchoolCd !== 'admin') return;
   const body = document.getElementById('adminDashBody');
@@ -4631,6 +4834,7 @@ async function loadAdminDashboard() {
     if (error) throw error;
 
     const bySchool = {};
+    const schoolCat = {};   // fix24：学校×分類のクロス集計用 { cd: { cat: n } }
     const elemCounts = {}, jhsCounts = {};
     let elemTotal = 0, jhsTotal = 0;
     (data || []).forEach(r => {
@@ -4647,8 +4851,19 @@ async function loadAdminDashboard() {
         return; // 対象9校以外のコードは集計に含めない
       }
       bySchool[cd] = (bySchool[cd] || 0) + n;
+      if (!schoolCat[cd]) schoolCat[cd] = {};
+      schoolCat[cd][cat] = (schoolCat[cd][cat] || 0) + n;
     });
     const townTotal = elemTotal + jhsTotal;
+
+    // fix24：点検進捗と貸出状況を並行取得（どちらかが失敗しても他の表示は止めない）
+    const [progress, statsRes] = await Promise.all([
+      adminLoadInventoryProgress(),
+      db.from('school_stats').select('school_cd, currently_lent, overdue_count')
+    ]);
+    const lendRows = (statsRes && !statsRes.error && statsRes.data) ? statsRes.data : null;
+    window._adminCross = { schoolCat, bySchool };
+    if (!window._adminCrossMode) window._adminCrossMode = 'pct';
 
     const schoolRow = s => `
       <tr style="border-bottom:1px solid var(--border);">
@@ -4713,7 +4928,27 @@ async function loadAdminDashboard() {
             ${subRow('町全体 合計', townTotal)}
           </tbody>
         </table>
-      </div>`;
+      </div>
+
+      <div class="section-header-row">
+        <div class="section-title-text">📋 蔵書点検の進捗（令和${toReiwa(getCurrentFiscalYear())}年度）</div>
+      </div>
+      ${adminBuildProgressHtml(progress, bySchool)}
+
+      <div class="section-header-row">
+        <div class="section-title-text">📤 貸出状況（現在）</div>
+      </div>
+      ${adminBuildLendingHtml(lendRows)}
+
+      <div class="section-header-row">
+        <div class="section-title-text">🏫 学校別 × 分類の比較</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="btn btn-primary" id="adminXBtn-pct" style="flex:1;font-size:13px;" onclick="adminSetCrossMode('pct')">割合（％）</button>
+        <button class="btn btn-ghost" id="adminXBtn-cnt" style="flex:1;font-size:13px;" onclick="adminSetCrossMode('cnt')">冊数</button>
+      </div>
+      <div class="card" id="adminCrossBox" style="overflow-x:auto;">${adminBuildCrossHtml()}</div>`;
+    adminUpdateCrossButtons();
   } catch (e) {
     console.error('管理者ダッシュボード読み込み失敗', e);
     const missing = e && (e.code === 'PGRST202' || /admin_collection_stats|function/i.test(e.message || ''));
