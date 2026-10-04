@@ -1843,6 +1843,19 @@ html, body {
         <div id="acc-barcode-icon" style="color:var(--text3);font-size:18px;">›</div>
       </div>
       <div id="acc-barcode" style="display:none;padding:0 16px 16px;">
+        <!-- fix25：読み取りテスト・形式切り替え -->
+        <div style="background:var(--bg3);border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:6px;">🧪 バーコード読み取りテスト</div>
+          <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">リーダーで読める形式・太さを確認します。テスト用紙を1枚印刷し、そのままスキャンして結果を見てください。</div>
+          <button onclick="printBarcodeTestSheet()" style="width:100%;padding:11px;background:var(--blue);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;">🧪 テスト用紙を印刷</button>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;">
+            <span style="white-space:nowrap;">印刷する形式：</span>
+            <select id="barcodeFormatSelect" class="form-input" style="flex:1;" onchange="setBarcodeFormat(this.value)">
+              <option value="CODE128B">Code128（標準）</option>
+              <option value="CODE39">Code39（読み取りが安定しやすい）</option>
+            </select>
+          </div>
+        </div>
         <div style="margin-bottom:16px;">
           <div style="font-weight:700;font-size:14px;margin-bottom:8px;">👤 利用者カード連番印刷</div>
           <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">先頭のIDと枚数を指定して連番で印刷します。</div>
@@ -2660,7 +2673,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-10-04-fix24（管理者ダッシュボード拡充：点検進捗・学校別×分類・貸出状況）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-10-04-fix25（バーコード印刷の改善：余白・実寸固定・Code128B・読み取りテスト）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -2887,32 +2900,33 @@ async function printLoginBarcode(type) {
   const bgColor    = type === 'teacher' ? '#dbeafe' : '#d1fae5';
   const labelColor = type === 'teacher' ? '#1e40af' : '#065f46';
 
+  // fix25：バーコードはこの画面側で実寸固定のSVGとして生成（印刷ウィンドウのCDN読み込みに依存しない）
+  try { await loadJsBarcode(); } catch (e) { alert(e.message); return; }
+  const svgStr = makeBarcodeSvgString(barcodeValue, { heightMm: 22, maxWidthMm: 90 });
+  if (!svgStr) { alert('バーコードを生成できませんでした'); return; }
+
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>${typeLabel}</title>
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
     <style>
       body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5;}
-      .card{background:${bgColor};border:2px solid ${labelColor};border-radius:16px;padding:24px 32px;text-align:center;max-width:420px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+      .card{background:${bgColor};border:2px solid ${labelColor};border-radius:16px;padding:20px 24px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
       h2{color:${labelColor};margin:0 0 4px;font-size:16px;}
-      p{color:#555;margin:0 0 16px;font-size:13px;}
-      svg{max-width:100%;}
+      p{color:#555;margin:0 0 14px;font-size:13px;}
+      .bcbox{background:#fff;border-radius:8px;padding:8mm 4mm 4mm;line-height:0;}
+      .bcbox svg{display:block;margin:0 auto;}
+      .val{font-family:monospace;font-size:14px;letter-spacing:0.1em;color:#111;margin-top:6px;line-height:1.2;}
       .hint{font-size:11px;color:#888;margin-top:12px;}
+      @media print { body{background:#fff;} .card{box-shadow:none;} }
     </style>
   </head><body>
     <div class="card">
       <h2>📚 ${schoolName}</h2>
       <p>${typeLabel}</p>
-      <svg id="barcode"></svg>
+      <div class="bcbox">${svgStr}<div class="val">${barcodeValue}</div></div>
       <div class="hint">このバーコードをスキャンしてログイン</div>
     </div>
-    <script>
-      JsBarcode('#barcode', '${barcodeValue}', {
-        format: 'CODE128', width: 3, height: 100,
-        displayValue: true, margin: 15, fontSize: 14
-      });
-      setTimeout(() => window.print(), 800);
-    <\/script>
+    <script>setTimeout(function(){ window.print(); }, 800);<\/script>
   </body></html>`);
   win.document.close();
 }
@@ -3426,6 +3440,10 @@ function toggleAccordion(id) {
       updateBarcodePreview();
     }
     if (id === 'acc-barcode') autoSetBarcodeStartNum();
+    if (id === 'acc-barcode') {
+      const fmtSel = document.getElementById('barcodeFormatSelect');
+      if (fmtSel) fmtSel.value = getBarcodeFormat();   // fix25
+    }
   }
 }
 
@@ -3492,6 +3510,148 @@ async function onCategoryChange(category, currentLanguage = '') {
 // ============================================================
 // バーコード印刷
 // ============================================================
+// ============================================================
+// fix25：バーコード生成の共通ヘルパー
+// ・実寸（mm）固定のSVGを返す（画面幅に合わせた縮小で線の太さが崩れるのを防ぐ）
+// ・左右の余白（クワイエットゾーン）をバーコード規格どおり10モジュール確保
+// ・Code128は「B」固定（文字種の自動切替でCを使わない＝読み取り機種による誤読を避ける）
+// ============================================================
+const BARCODE_MODULE_MM = 0.40;      // 細いバー1本の幅（mm）
+const BARCODE_QUIET_MODULES = 10;    // 左右の余白（モジュール数）
+
+function getBarcodeFormat() {
+  return localStorage.getItem('lib_barcode_format') === 'CODE39' ? 'CODE39' : 'CODE128B';
+}
+function setBarcodeFormat(f) {
+  localStorage.setItem('lib_barcode_format', f === 'CODE39' ? 'CODE39' : 'CODE128B');
+}
+
+// opt: { format, moduleMm, heightMm, quietModules, maxWidthMm }  → SVG文字列（失敗時は ''）
+function makeBarcodeSvgString(value, opt = {}) {
+  const format = opt.format || getBarcodeFormat();
+  const heightMm = opt.heightMm || 10;
+  const quiet = (opt.quietModules != null) ? opt.quietModules : BARCODE_QUIET_MODULES;
+  const W = 2;   // 描画時の1モジュール幅(px)。実寸は最後にmm指定へ置き換える
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  document.body.appendChild(svg);
+  try {
+    const base = {
+      format, width: W, displayValue: false, background: '#ffffff', lineColor: '#000000',
+      margin: 0, marginLeft: quiet * W, marginRight: quiet * W,
+    };
+    // 1回目：全体のモジュール数を知るために描画
+    JsBarcode(svg, String(value), Object.assign({}, base, { height: 50 }));
+    const totalModules = parseFloat(svg.getAttribute('width')) / W;
+    let moduleMm = opt.moduleMm || BARCODE_MODULE_MM;
+    if (opt.maxWidthMm) moduleMm = Math.min(moduleMm, opt.maxWidthMm / totalModules);
+    // 2回目：バーの高さ(mm)がモジュール幅と同じ縮尺になるよう高さを決めて描画
+    const barHeightPx = Math.max(10, Math.round(heightMm / moduleMm * W));
+    JsBarcode(svg, String(value), Object.assign({}, base, { height: barHeightPx }));
+    const natW = parseFloat(svg.getAttribute('width'));
+    const natH = parseFloat(svg.getAttribute('height'));
+    svg.setAttribute('width',  (natW / W * moduleMm).toFixed(2) + 'mm');
+    svg.setAttribute('height', (natH / W * moduleMm).toFixed(2) + 'mm');
+    return new XMLSerializer().serializeToString(svg);
+  } catch (e) {
+    console.warn('バーコード生成に失敗:', value, e);
+    return '';
+  } finally {
+    document.body.removeChild(svg);
+  }
+}
+
+// ---- 読み取りテスト用紙（どの形式・大きさならリーダーで読めるかを確認する） ----
+async function printBarcodeTestSheet() {
+  try { await loadJsBarcode(); } catch (e) { alert(e.message); return; }
+  const abbr = (typeof SCHOOL_ABBR !== 'undefined' && SCHOOL_ABBR[currentSchoolCd]) || 'TAK';
+  const sample = abbr + '-00001';
+  const longSample = 'T50301' + 'A1B2C3D4';   // ログイン用と同じ長さ（14文字）
+  const tests = [
+    { id: 'A', label: '本ラベル｜Code128B｜標準の太さ（0.40mm）',   value: sample,     opt: { format: 'CODE128B', moduleMm: 0.40, heightMm: 12 } },
+    { id: 'B', label: '本ラベル｜Code128B｜細め（0.30mm）',         value: sample,     opt: { format: 'CODE128B', moduleMm: 0.30, heightMm: 12 } },
+    { id: 'C', label: '本ラベル｜Code39｜標準の太さ（0.40mm）',     value: sample,     opt: { format: 'CODE39',   moduleMm: 0.40, heightMm: 12 } },
+    { id: 'D', label: '本ラベル｜Code39｜細め（0.30mm）',           value: sample,     opt: { format: 'CODE39',   moduleMm: 0.30, heightMm: 12 } },
+    { id: 'E', label: '【参考】これまでの方式に近いもの（Code128自動・余白なし）', value: sample, opt: { format: 'CODE128', moduleMm: 0.42, heightMm: 9, quietModules: 0 } },
+    { id: 'F', label: 'ログイン用（14文字）｜Code128B｜標準（0.40mm）', value: longSample, opt: { format: 'CODE128B', moduleMm: 0.40, heightMm: 14, maxWidthMm: 150 } },
+    { id: 'G', label: 'ログイン用（14文字）｜Code39｜標準（0.33mm）',   value: longSample, opt: { format: 'CODE39',   moduleMm: 0.33, heightMm: 14, maxWidthMm: 150 } },
+  ];
+  tests.forEach(t => { t.svg = makeBarcodeSvgString(t.value, t.opt); });
+
+  const esc = x => String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const rows = tests.map(t => `
+    <div class="row">
+      <div class="rl"><b>${t.id}</b>　${esc(t.label)}</div>
+      <div class="bc">${t.svg || '<span style="color:red">生成に失敗しました</span>'}</div>
+      <div class="val">${esc(t.value)}</div>
+    </div>`).join('');
+  const expectJson = JSON.stringify(tests.map(t => ({ id: t.id, value: t.value }))).replace(/</g, '\\u003c');
+
+  const win = window.open('', '_blank', 'width=900,height=800');
+  win.document.write(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>バーコード読み取りテスト</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Meiryo UI',sans-serif; background:#fff; color:#111; padding:14px 18px; }
+  h1 { font-size:16px; margin-bottom:6px; }
+  .note { font-size:12px; color:#444; line-height:1.7; margin-bottom:10px; }
+  button { padding:9px 22px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; }
+  .row { border:1px dashed #999; padding:6px 10px 6px; margin-top:8px; page-break-inside:avoid; }
+  .rl { font-size:12px; margin-bottom:4px; }
+  .bc { line-height:0; background:#fff; }
+  .bc svg { display:block; }
+  .val { font-family:monospace; font-size:13px; font-weight:700; margin-top:3px; letter-spacing:0.08em; }
+  .scan { border:2px solid #2563eb; border-radius:10px; padding:10px 12px; margin:10px 0 4px; background:#f3f7ff; }
+  .scan label { font-size:13px; font-weight:700; }
+  .scan input[type=text] { width:100%; font-size:18px; padding:8px; margin-top:6px; font-family:monospace; ime-mode:disabled; }
+  .scan select { font-size:14px; padding:3px; }
+  #log { list-style:none; margin-top:8px; font-size:13px; line-height:1.9; }
+  #log li { border-bottom:1px solid #dde; }
+  @media print { .noprint { display:none; } }
+</style></head><body>
+<div class="noprint">
+  <h1>🧪 バーコード読み取りテスト</h1>
+  <div class="note">
+    ① 「印刷する」で用紙を出力 → ② 下の入力欄をクリック → ③ 印刷した A, B, C … を順にリーダーで読み取る。<br>
+    読み取った文字が正しいか自動で判定します（正しい文字は右のバーコードの下に印字した値です）。<br>
+    ※印刷ダイアログで「倍率：100%」「ページに合わせる：オフ」「トナー節約：オフ」にしてください。
+  </div>
+  <button onclick="window.print()">🖨️ 印刷する</button>
+  <div class="scan">
+    <label>いまスキャンするもの：
+      <select id="cur"></select>
+    </label>
+    <input type="text" id="scanIn" placeholder="ここをクリックしてからスキャン" autocomplete="off" lang="en" />
+    <ul id="log"></ul>
+  </div>
+</div>
+${rows}
+<script>
+  var T = ${expectJson};
+  var cur = document.getElementById('cur');
+  T.forEach(function(t, i){ var o = document.createElement('option'); o.value = i; o.textContent = t.id; cur.appendChild(o); });
+  var inp = document.getElementById('scanIn'), log = document.getElementById('log');
+  inp.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter') return;
+    var txt = inp.value; inp.value = '';
+    if (!txt) return;
+    var i = parseInt(cur.value, 10), t = T[i], msg, color;
+    if (txt === t.value) { msg = '✅ 正しく読めました'; color = '#067a3a'; }
+    else if (txt.toUpperCase() === t.value) { msg = '⚠️ 大文字/小文字が違います（CapsLock・リーダー設定を確認）'; color = '#b45309'; }
+    else if (/[^\\x20-\\x7e]/.test(txt)) { msg = '⚠️ 全角/日本語になっています（IMEを半角英数にしてください）'; color = '#b45309'; }
+    else { msg = '❌ 読み取り結果が違います'; color = '#c00'; }
+    var li = document.createElement('li');
+    li.style.color = color;
+    li.textContent = t.id + '： ' + msg + '　［読めた文字: ' + txt + '］';
+    log.insertBefore(li, log.firstChild);
+    if (i < T.length - 1) cur.value = String(i + 1);
+    inp.focus();
+  });
+  inp.focus();
+<\/script>
+</body></html>`);
+  win.document.close();
+}
+
 async function loadJsBarcode() {
   if (window.JsBarcode) return;
   // CDNブロック対策：SheetJSと同様にGitHub Pages上のローカルコピーを優先し、CDNへフォールバック
@@ -3633,19 +3793,27 @@ async function printBookBarcodes() {
 }
 
 function openPrintWindow(ids, title, type) {
+  // fix25：バーコードはこの画面側で実寸固定のSVGとして生成（印刷ウィンドウのCDN読み込みに依存しない）
+  const isUser = type === 'user';
+  const svgs = ids.map(id => makeBarcodeSvgString(id, {
+    heightMm: isUser ? 14 : 11,
+    maxWidthMm: isUser ? 76 : 62,
+  }));
+
   const win = window.open('', '_blank', 'width=800,height=600');
-  const cardWidth = type === 'user' ? '85mm' : '70mm';
-  const cardHeight = type === 'user' ? '54mm' : '35mm';
-  const bgColor = type === 'user' ? '#e8f0fe' : '#fff';
+  const cardWidth = isUser ? '85mm' : '70mm';
+  const cardHeight = isUser ? '54mm' : '35mm';
+  const bgColor = isUser ? '#e8f0fe' : '#fff';
   // 現在表示中の学校名を取得（home-school-labelが最も確実）
   const schoolName = document.getElementById('home-school-label')?.textContent?.trim() || '愛川町図書館';
-  const label = type === 'user' ? `${schoolName}　利用者カード` : schoolName;
+  const label = isUser ? `${schoolName}　利用者カード` : schoolName;
+  const esc = x => String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  const cardsHtml = ids.map(id => `
+  const cardsHtml = ids.map((id, i) => `
     <div class="card">
-      <div class="card-label">${label}</div>
-      <svg class="barcode" data-id="${id}"></svg>
-      <div class="card-id">${id}</div>
+      <div class="card-label">${esc(label)}</div>
+      <div class="bc">${svgs[i] || '<span style="color:red;font-size:11px;">生成失敗</span>'}</div>
+      <div class="card-id">${esc(id)}</div>
     </div>
   `).join('');
 
@@ -3653,7 +3821,6 @@ function openPrintWindow(ids, title, type) {
 <html><head>
 <meta charset="UTF-8">
 <title>${title}</title>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: 'Meiryo UI', sans-serif; background:#f5f5f5; padding:16px; }
@@ -3670,7 +3837,8 @@ function openPrintWindow(ids, title, type) {
     page-break-inside:avoid;
   }
   .card-label { font-size:9px; color:#666; margin-bottom:2px; letter-spacing:0.05em; }
-  .barcode { max-width:100%; height:auto; }
+  .bc { line-height:0; }
+  .bc svg { display:block; }
   .card-id { font-family:monospace; font-size:13px; font-weight:700; margin-top:4px; letter-spacing:0.1em; }
   @media print {
     body { background:white; padding:0; }
@@ -3682,26 +3850,11 @@ function openPrintWindow(ids, title, type) {
     background:#2563eb; color:white; border:none;
     border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;
   }
+  @media print { .print-btn { display:none; } }
 </style>
 </head><body>
 <button class="print-btn" onclick="window.print()">🖨️ 印刷する</button>
 <div class="grid">${cardsHtml}</div>
-<script>
-  document.querySelectorAll('.barcode').forEach(svg => {
-    const id = svg.getAttribute('data-id');
-    try {
-      JsBarcode(svg, id, {
-        format: 'CODE128',
-        width: 2,
-        height: 50,
-        displayValue: false,
-        margin: 2,
-      });
-    } catch(e) {
-      svg.parentElement.querySelector('.card-id').style.color = 'red';
-    }
-  });
-<\/script>
 </body></html>`);
   win.document.close();
 }
@@ -3943,16 +4096,8 @@ async function printLinkedLabels() {
     if (printItems.length === 0) { renderLabelCandidates(); return; }
 
     // ③ バーコードSVGをこの画面側で生成（印刷ウィンドウにスクリプト不要＝CDNブロックの影響なし）
-    const serializer = new XMLSerializer();
-    const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    document.body.appendChild(tmp);
-    const svgs = printItems.map(c => {
-      try {
-        JsBarcode(tmp, c.isbn, { format: 'CODE128', width: 1.6, height: 36, displayValue: false, margin: 0 });
-        return serializer.serializeToString(tmp);
-      } catch (e) { return ''; }
-    });
-    document.body.removeChild(tmp);
+    // fix25：実寸固定（細線0.40mm・高さ10mm）・左右に規格どおりの余白・Code128B
+    const svgs = printItems.map(c => makeBarcodeSvgString(c.isbn, { heightMm: 10, maxWidthMm: 62 }));
 
     // ④ 印刷ウィンドウ生成
     const preset = document.getElementById('labelSheetPreset').value;
@@ -4024,7 +4169,7 @@ function buildLabelPrintWindow(items, svgs, preset, startPos) {
   .toolbar .note { font-size:12px; color:#666; margin-top:6px; }
   .l1 { font-size:7.5px; color:#333; white-space:nowrap; overflow:hidden; max-width:100%; }
   .bc { line-height:0; margin:1mm 0 0.5mm; }
-  .bc svg { max-width:60mm; height:9mm; }
+  .bc svg { display:block; }
   .l2 { font-family:monospace; font-size:9px; font-weight:700; letter-spacing:0.08em; }
   .l3 { font-size:7.5px; color:#333; white-space:nowrap; overflow:hidden;
         text-overflow:ellipsis; max-width:100%; }
