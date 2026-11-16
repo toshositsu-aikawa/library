@@ -1393,6 +1393,25 @@ body.student-mode #screen-home .fb-body { font-size: 16px; }
   font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit;
 }
 
+/* ---- fix33：図書委員モードの「いま何を読むか」の案内 ---- */
+.student-step { display: none; }
+body.student-mode .student-step {
+  display: flex; align-items: center; gap: 14px; background: #fff; border-radius: 24px;
+  padding: 16px 18px; margin-bottom: 16px; box-shadow: 0 3px 0 #C5D5F5; color: #14213D;
+}
+.stu-step-no {
+  width: 56px; height: 56px; border-radius: 28px; flex-shrink: 0; background: #1D4FBF; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 800;
+}
+.student-step.ret .stu-step-no { background: #FFC533; color: #3A2700; }
+.stu-step-text { flex: 1; min-width: 0; }
+.stu-step-main { font-size: 23px; font-weight: 800; line-height: 1.35; }
+.stu-step-sub { font-size: 15px; font-weight: 700; color: #3D4F7A; margin-top: 2px; }
+.stu-step-next {
+  min-height: 56px; padding: 0 18px; border-radius: 28px; border: 3px solid #1D4FBF; background: #fff; color: #1D4FBF;
+  font-size: 17px; font-weight: 800; cursor: pointer; flex-shrink: 0; font-family: inherit;
+}
+
 /* ===== DIVIDER ===== */
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 </style>
@@ -1502,6 +1521,8 @@ body.student-mode #screen-home .fb-body { font-size: 16px; }
           <option value="">📍 場所を選択（任意）</option>
         </select>
       </div>
+      <!-- fix33：図書委員モードで「いま何を読み取るか」を表示 -->
+      <div class="student-step" id="studentStep"></div>
       <div class="scan-input-row">
         <input class="scan-isbn" id="homeIsbn" type="text" inputmode="numeric" placeholder="スキャンまたはISBNを入力…" autocomplete="off" />
         <button class="scan-go" onclick="handleHomeScan()">↵</button>
@@ -3167,7 +3188,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-16-fix32（ログイン画面を大きく・タブレットでは全体を拡大表示・図書委員モードのホームを「かす／かえす」の2ボタンに）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-16-fix33（図書委員モードの貸出：①利用者カード → ②本 の順に読み取り、確認ボタンなしで貸出。続けて複数冊OK）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -3535,6 +3556,10 @@ function applyStudentModeUI() {
 // fix32：図書委員モードの見た目を元に戻す（終了・ログアウト時）
 function clearStudentModeUI() {
   document.body.classList.remove('student-mode');
+  window._stuBorrower = null;                 // fix33
+  clearTimeout(window._stuTimer);
+  const step = document.getElementById('studentStep');
+  if (step) step.innerHTML = '';
   const isbn = document.getElementById('homeIsbn');
   if (isbn) isbn.placeholder = 'スキャンまたはISBNを入力…';
 }
@@ -6253,7 +6278,140 @@ function setScanMode(mode) {
     regShelfRow.style.display = mode === 'reg' ? 'block' : 'none';
     if (mode === 'reg') loadShelvesIntoSelect('regShelfId');
   }
+  if (isStudentMode) {   // fix33：切り替えたら最初の手順から（前の結果表示も消す）
+    window._stuBorrower = null;
+    clearTimeout(window._stuTimer);
+    stuUpdateStep();
+    const sfb = document.getElementById('homeFeedback');
+    if (sfb) sfb.innerHTML = '';
+  }
   document.getElementById('homeIsbn').focus();
+}
+
+// ============================================================
+// fix33：図書委員モードの貸出（①利用者カード → ②本）
+// 利用者カードを読むと、その人への貸出が続けてできる（別のカードを読むか「つぎの人」で切り替え）。
+// 1分間なにも読まなければ、まちがい防止のため最初の手順に戻る。返却は本を読むだけ。
+// ※ 状態は window のプロパティで持つ（TDZ対策）
+// ============================================================
+const STU_LEND_DAYS = 14;   // 貸出期間（日）
+
+function stuKana() { return ELEM_CDS.includes(String(loginSchoolCd)); }
+
+// 利用者カードのID（英字＋数字。例：S25001）らしいか
+function stuLooksLikeCard(val) { return /^[A-Za-z]+\d+$/.test(val); }
+// 本のバーコード（ISBN・独自バーコード）らしいか
+function stuLooksLikeBook(val) {
+  const digits = val.replace(/-/g, '');
+  return /^\d{10}$|^\d{13}$|^\d{9}[Xx]$/.test(digits) || isLocalBarcode(val);
+}
+
+function stuFeedback(fb, kind, icon, title, body) {
+  fb.innerHTML = `<div class="feedback ${kind}"><div class="fb-icon">${icon}</div><div><div class="fb-title">${escHtml(title)}</div>${body ? `<div class="fb-body">${escHtml(body)}</div>` : ''}</div></div>`;
+}
+
+function stuUpdateStep() {
+  const el = document.getElementById('studentStep');
+  const isbn = document.getElementById('homeIsbn');
+  if (!el || !isStudentMode) return;
+  const k = stuKana();
+  const who = window._stuBorrower;
+  let no, main, sub = '', next = '', ph;
+  if (scanMode === 'ret') {
+    no = '1'; main = k ? 'かえす 本を ピッ' : '返す本を読み取る';
+    sub = k ? 'カードは いりません' : '利用者カードは不要です';
+    ph = k ? '本の バーコードを ピッ' : '本のバーコード';
+  } else if (!who) {
+    no = '1'; main = k ? 'かりる人の カードを ピッ' : '借りる人のカードを読み取る';
+    sub = k ? 'そのあと 本を ピッ' : 'そのあと本を読み取ります';
+    ph = k ? 'カードを ピッ' : '利用者カード';
+  } else {
+    no = '2'; main = k ? `${who} さんの 本を ピッ` : `${who} さんの本を読み取る`;
+    sub = k ? 'つづけて なんさつでも OK' : '続けて何冊でも貸し出せます';
+    next = `<button class="stu-step-next" onclick="stuResetBorrower()">${k ? 'つぎの人' : '次の人'}</button>`;
+    ph = k ? '本の バーコードを ピッ' : '本のバーコード';
+  }
+  el.className = 'student-step' + (scanMode === 'ret' ? ' ret' : '');
+  el.innerHTML = `<div class="stu-step-no">${no}</div>
+    <div class="stu-step-text"><div class="stu-step-main">${escHtml(main)}</div><div class="stu-step-sub">${escHtml(sub)}</div></div>${next}`;
+  if (isbn) isbn.placeholder = ph;
+}
+
+function stuResetBorrower() {
+  window._stuBorrower = null;
+  clearTimeout(window._stuTimer);
+  stuUpdateStep();
+  document.getElementById('homeIsbn')?.focus();
+}
+
+// 最後に読み取ってから1分たったら、借りる人の選択を解除する
+function stuTouch() {
+  clearTimeout(window._stuTimer);
+  if (window._stuBorrower) window._stuTimer = setTimeout(stuResetBorrower, 60000);
+}
+
+function stuSetBorrower(id, fb) {
+  window._stuBorrower = id;
+  stuTouch();
+  stuUpdateStep();
+  const k = stuKana();
+  stuFeedback(fb, 'ok', '🙂', `${id} ${k ? 'さん' : 'さん'}`, k ? 'つぎに 本の バーコードを ピッ' : '次に本のバーコードを読み取ってください');
+}
+
+async function studentLendScan(val, fb) {
+  const k = stuKana();
+  const cardLike = stuLooksLikeCard(val);
+  const bookLike = stuLooksLikeBook(val);
+
+  // ① まだ借りる人が決まっていない → 利用者カードを待つ
+  if (!window._stuBorrower) {
+    if (cardLike && !bookLike) { stuSetBorrower(val, fb); return; }
+    if (bookLike) {
+      stuFeedback(fb, 'warn', '☝️', k ? 'さきに カードを ピッ' : '先に利用者カードを読み取ってください',
+        k ? 'かりる人の カードを よんでから、本を よみます' : '借りる人のカードを読んでから、本を読み取ります');
+    } else {
+      stuFeedback(fb, 'warn', '❓', k ? 'カードが よめませんでした' : '利用者カードとして読めませんでした', val);
+    }
+    return;
+  }
+
+  // ② 借りる人が決まっている → 本を待つ
+  stuTouch();
+  const books = bookLike || !cardLike ? await findBooksByISBN(val, currentSchoolCd) : [];
+  if (books.length === 0) {
+    if (cardLike) { stuSetBorrower(val, fb); return; }   // 別の人のカードを読んだ → 借りる人を切り替え
+    stuFeedback(fb, 'warn', '❓', k ? 'この本は とうろく されていません' : 'この本は登録されていません',
+      k ? 'せんせいに きいてね' : '先生に確認してください');
+    return;
+  }
+
+  const lend = async (book) => {
+    const who = window._stuBorrower;
+    if (!who) { stuUpdateStep(); return; }
+    if (book.status === 'lent') {
+      stuFeedback(fb, 'warn', '📕', k ? 'この本は かしだし中です' : 'この本は貸出中になっています',
+        k ? 'さきに「かえす」を してね' : '先に「返す」で返却してください');
+      return;
+    }
+    const due = new Date();
+    due.setDate(due.getDate() + STU_LEND_DAYS);
+    const ok = await submitLending(book.id, who, due.toISOString().slice(0, 10));
+    if (ok) {
+      const dueText = `${due.getMonth() + 1}月${due.getDate()}日`;
+      stuFeedback(fb, 'ok', '✅', k ? `${who} さんに かしました` : `${who} さんに貸し出しました`,
+        `${book.title || ''}　／　${k ? 'かえす日' : '返却日'}：${dueText}`);
+      loadStats(currentSchoolCd);
+    }
+    stuTouch();
+    document.getElementById('homeIsbn')?.focus();
+  };
+
+  if (books.length === 1) {
+    await lend(books[0]);
+  } else {
+    stuFeedback(fb, 'ok', '📚', k ? `おなじ本が ${books.length}さつ あります` : `同じ本が${books.length}冊あります`, k ? 'どれか えらんでね' : 'どれかを選んでください');
+    showMultiBookModal(books, val, 'lend', lend, null);
+  }
 }
 
 // ===== ホームスキャン =====
@@ -6311,6 +6469,12 @@ async function handleHomeScan() {
     }
 
   } else if (scanMode === 'lend') {
+    // fix33：図書委員モードは「①利用者カード → ②本」の順に読み取る専用の流れ
+    if (isStudentMode) {
+      await studentLendScan(val, fb);
+      input.focus();
+      return;
+    }
     // 貸出モード
     const lendBooks = await findBooksByISBN(val, currentSchoolCd);
     if (lendBooks.length === 0) {
