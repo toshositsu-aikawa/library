@@ -1276,8 +1276,8 @@ body.theme-pop #loginScreen { background: #EEF4FF; font-family: var(--pop-font);
 body.theme-pop #loginScreen :is(button, input) { font-family: var(--pop-font); }
 body.theme-pop .login-card { background: #fff; border: none; border-radius: 28px; box-shadow: 0 4px 0 #D6E2FA; }
 body.theme-pop .login-logo h1 { color: #14213D; font-weight: 800; }
-body.theme-pop .login-field label { color: #3D4F7A; font-size: 14px; font-weight: 700; }
-body.theme-pop .login-field input { background: #F7FAFF; border: 2px solid #C5D5F5; color: #14213D; border-radius: 14px; min-height: 56px; font-size: 17px; }
+body.theme-pop .login-field label { color: #3D4F7A; font-weight: 700; }
+body.theme-pop .login-field input { background: #F7FAFF; border: 2px solid #C5D5F5; color: #14213D; border-radius: 16px; min-height: 56px; }
 body.theme-pop .login-field input:focus { border-color: #1D4FBF; }
 body.theme-pop .login-btn { background: #1D4FBF; border-radius: 30px; min-height: 60px; font-weight: 800; box-shadow: 0 4px 0 #163C91; }
 body.theme-pop .login-error { color: #B3261E; }
@@ -1289,6 +1289,109 @@ body.theme-pop .login-sub-btn { border: 2px solid #C5D5F5; color: #3D4F7A; borde
 body.theme-pop .login-sub-text { color: #3D4F7A; }
 body.theme-pop .login-barcode-input { background: #F7FAFF; color: #14213D; border-color: #1D4FBF; }
 body.theme-pop #studentLoginBtn { background: #0B6B5E !important; box-shadow: 0 4px 0 #074B42; }
+
+/* ============================================================
+   fix32：ログイン画面を大きく／タブレットでは全体を大きく／図書委員モードのホーム
+   ============================================================ */
+/* ---- ログイン画面（全テーマ共通で大きく） ---- */
+.login-card { max-width: 520px; padding: 44px 34px; }
+.login-logo .icon { font-size: 64px; }
+.login-logo h1 { font-size: 1.3em; }
+.login-tab { padding: 20px 4px; font-size: 16px; }
+.login-field { margin-bottom: 20px; }
+.login-field label { font-size: 1em; margin-bottom: 8px; }
+.login-field input { padding: 18px; font-size: 1.25em; }
+.login-btn { padding: 20px; font-size: 1.3em; margin-top: 10px; }
+.login-error { font-size: 1.05em; }
+.login-sub-btn { padding: 16px; font-size: 16px; }
+.login-sub-text { font-size: 16px; }
+.login-barcode-input { padding: 18px; font-size: 18px; }
+@media (min-width: 700px) {
+  .login-card { max-width: 660px; padding: 60px 52px; }
+  .login-logo { margin-bottom: 36px; }
+  .login-logo .icon { font-size: 88px; }
+  .login-logo h1 { font-size: 2em; }
+  .login-tab { padding: 28px 8px; font-size: 25px; }
+  .login-field { margin-bottom: 26px; }
+  .login-field label { font-size: 1.25em; margin-bottom: 10px; }
+  .login-field input { padding: 24px 22px; font-size: 1.6em; }
+  .login-btn { padding: 28px; font-size: 1.7em; margin-top: 14px; }
+  .login-error { font-size: 1.25em; }
+  .login-sub-btn { padding: 22px; font-size: 20px; }
+  .login-sub-text { font-size: 19px; }
+  .login-barcode-input { padding: 24px; font-size: 22px; }
+}
+
+/* ---- あかるいテーマ：ボタンは指で押しやすい高さに ---- */
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) button { min-height: 48px; }
+
+/* ---- タブレット（幅700px以上）：画面の中身を1.25倍に拡大して表示 ---- */
+@media (min-width: 700px) {
+  :root { --stu-banner-h: 80px; }
+  body #studentBanner { font-size: 23px; padding: 0 24px; }
+  body #studentBanner button { min-height: 56px; padding: 0 26px; border-radius: 28px; font-size: 21px; }
+  body.theme-pop { --tab-h: 108px; }
+  body.theme-pop .screen:not(#screen-admin) .scroll-content,
+  body.theme-pop .modal-overlay :is(.modal-header, .modal-body) { zoom: 1.25; }
+  body.theme-pop .screen:not(#screen-admin) .topbar { height: 92px; padding-left: 28px; padding-right: 28px; }
+  body.theme-pop .screen:not(#screen-admin) .topbar-title { font-size: 29px; }
+  body.theme-pop .screen:not(#screen-admin) .topbar-school { font-size: 18px; padding: 8px 18px; }
+  body.theme-pop .screen:not(#screen-admin) .icon-btn { width: 64px; height: 64px; border-radius: 32px; font-size: 28px; }
+  body.theme-pop .tab-icon { font-size: 36px; }
+  body.theme-pop .tab-label { font-size: 17px; }
+  body.theme-pop .tab-item { margin: 8px 8px; border-radius: 22px; }
+}
+
+/* ---- 図書委員モードのホーム（「かす」「かえす」の2つだけ） ---- */
+.student-heading, .sm-icon, .sm-text { display: none; }
+body.student-mode .tab-bar { display: none; }
+body.student-mode #screen-home .topbar,
+body.student-mode #screen-home .stat-grid,
+body.student-mode #screen-home .section-header-row,
+body.student-mode #recentActivity,
+body.student-mode #screen-home .scan-label,
+body.student-mode #hm-reg,
+body.student-mode #regShelfRow { display: none !important; }
+body.student-mode #screen-home .scroll-content { padding-bottom: 28px; }
+body.student-mode #screen-home, body.student-mode #screen-home :is(button, input) {
+  font-family: 'M PLUS Rounded 1c', 'Hiragino Maru Gothic ProN', 'Noto Sans JP', sans-serif;
+}
+body.student-mode #homeScanWidget { background: transparent; border: none; box-shadow: none; padding: 0; }
+body.student-mode .student-heading { display: block; font-size: 28px; font-weight: 800; line-height: 1.35; margin: 8px 2px 18px; }
+body.student-mode #screen-home .scan-mode-row { flex-direction: column; gap: 18px; margin-bottom: 20px; }
+body.student-mode #screen-home .scan-mode-btn {
+  flex: none; width: 100%; min-height: clamp(128px, 22vh, 210px);
+  display: flex; align-items: center; gap: 22px; padding: 0 26px; text-align: left;
+  border-radius: 30px; border: 4px solid transparent; box-shadow: none;
+  background: #DCE8FF; color: #1D4FBF;
+}
+body.student-mode #screen-home .scan-mode-btn.mode-return { background: #FFF4D9; color: #4A3200; }
+body.student-mode #screen-home .scan-mode-btn.active { background: #1D4FBF; color: #fff; border-color: #1D4FBF; box-shadow: 0 6px 0 #163C91; }
+body.student-mode #screen-home .scan-mode-btn.mode-return.active { background: #FFC533; color: #3A2700; border-color: #FFC533; box-shadow: 0 6px 0 #D99A00; }
+body.student-mode .sm-plain { display: none; }
+body.student-mode .sm-icon {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 96px; height: 96px; border-radius: 30px; background: #fff; color: #1D4FBF;
+}
+body.student-mode .mode-return .sm-icon { color: #7A5200; }
+body.student-mode .sm-text { display: flex; flex-direction: column; gap: 4px; }
+body.student-mode .sm-big { font-size: 46px; font-weight: 800; line-height: 1.1; }
+body.student-mode .sm-sub { font-size: 18px; font-weight: 700; }
+body.student-mode #screen-home .scan-isbn { min-height: 76px; border-radius: 22px; border: 4px solid #1D4FBF; font-size: 20px; background: #fff; color: #14213D; }
+body.student-mode #screen-home .scan-isbn::placeholder { font-size: 18px; font-weight: 700; color: #3D4F7A; font-family: inherit; }
+body.student-mode #screen-home .scan-go { width: 76px; height: 76px; border-radius: 22px; font-size: 30px; }
+body.student-mode #screen-home .feedback { border-radius: 22px; padding: 18px 20px; }
+body.student-mode #screen-home .fb-title { font-size: 20px; }
+body.student-mode #screen-home .fb-body { font-size: 16px; }
+#studentBanner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 99999; height: var(--stu-banner-h, 60px); box-sizing: border-box;
+  background: #0B6B5E; color: #fff; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: 17px; font-weight: 800; font-family: 'M PLUS Rounded 1c', 'Hiragino Maru Gothic ProN', 'Noto Sans JP', sans-serif;
+}
+#studentBanner button {
+  min-height: 44px; padding: 0 18px; border-radius: 22px; border: 2px solid #fff; background: transparent; color: #fff;
+  font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit;
+}
 
 /* ===== DIVIDER ===== */
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
@@ -1326,7 +1429,7 @@ body.theme-pop #studentLoginBtn { background: #0B6B5E !important; box-shadow: 0 
           <label>パスワード</label>
           <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
         </div>
-        <button class="login-btn" id="loginBtn" onclick="doLogin()" style="padding:16px;font-size:1.05em;">ログイン</button>
+        <button class="login-btn" id="loginBtn" onclick="doLogin()">ログイン</button>
       </div>
 
       <!-- 図書委員用ログインフォーム -->
@@ -1340,7 +1443,7 @@ body.theme-pop #studentLoginBtn { background: #0B6B5E !important; box-shadow: 0 
           <input type="password" id="studentPassword" placeholder="••••••••" />
         </div>
         <button class="login-btn" id="studentLoginBtn" onclick="doStudentLogin()"
-          style="padding:16px;font-size:1.05em;background:linear-gradient(135deg,#10b981,#059669);">
+          style="background:linear-gradient(135deg,#10b981,#059669);">
           図書委員としてログイン
         </button>
       </div>
@@ -1386,9 +1489,11 @@ body.theme-pop #studentLoginBtn { background: #0B6B5E !important; box-shadow: 0 
     <!-- スキャンウィジェット -->
     <div class="scan-widget" id="homeScanWidget">
       <div class="scan-label">本のバーコードを読み取る</div>
+      <!-- fix32：図書委員モードのときだけ表示される見出しと大きなボタンの中身（.sm-〜） -->
+      <div class="student-heading" id="studentHeading">きょうは なにを しますか？</div>
       <div class="scan-mode-row">
-        <button class="scan-mode-btn active" id="hm-lend" onclick="setScanMode('lend')">📤 貸出</button>
-        <button class="scan-mode-btn mode-return" id="hm-ret" onclick="setScanMode('ret')">📥 返却</button>
+        <button class="scan-mode-btn active" id="hm-lend" onclick="setScanMode('lend')"><span class="sm-plain">📤 貸出</span><span class="sm-icon"><svg aria-hidden="true" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></span><span class="sm-text"><span class="sm-big" id="smLendBig">かす</span><span class="sm-sub" id="smLendSub">本を かしだす</span></span></button>
+        <button class="scan-mode-btn mode-return" id="hm-ret" onclick="setScanMode('ret')"><span class="sm-plain">📥 返却</span><span class="sm-icon"><svg aria-hidden="true" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12l7 7 7-7"/></svg></span><span class="sm-text"><span class="sm-big" id="smRetBig">かえす</span><span class="sm-sub" id="smRetSub">本が もどってきた</span></span></button>
         <button class="scan-mode-btn mode-register" id="hm-reg" onclick="setScanMode('reg')">➕ 登録</button>
       </div>
       <!-- 登録時の場所選択（登録モード時のみ表示） -->
@@ -3062,7 +3167,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-16-fix31（あかるいテーマを標準に：先生・指導員用画面とログイン画面の配色・丸み・ボタンの大きさ。管理者ダッシュボードは従来のまま）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-16-fix32（ログイン画面を大きく・タブレットでは全体を拡大表示・図書委員モードのホームを「かす／かえす」の2ボタンに）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -3395,13 +3500,14 @@ function showStudentBanner(schoolName) {
   if (banner) return;
   banner = document.createElement('div');
   banner.id = 'studentBanner';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#10b981,#059669);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700;';
+  // fix32：見た目はCSS（#studentBanner）で指定。小学校はひらがな、中学校は漢字
+  const kana = ELEM_CDS.includes(String(loginSchoolCd));
   banner.innerHTML = `
-    <span>📚 図書委員モード：${schoolName}</span>
-    <button onclick="exitStudentMode()" style="background:rgba(0,0,0,0.2);border:none;border-radius:8px;padding:6px 12px;color:#fff;font-weight:700;cursor:pointer;font-size:12px;">✕ 終了</button>
+    <span>${kana ? 'としょいいん モード' : '図書委員モード'}　${escHtml(schoolName)}</span>
+    <button onclick="exitStudentMode()">${kana ? 'おわる' : '終了'}</button>
   `;
   document.body.prepend(banner);
-  document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '44px');
+  document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = 'var(--stu-banner-h, 60px)');
 }
 
 function applyStudentModeUI() {
@@ -3409,7 +3515,28 @@ function applyStudentModeUI() {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
+  // fix32：ホームを「かす」「かえす」の2つの大きなボタンだけにする（小学校はひらがな、中学校は漢字）
+  const kana = ELEM_CDS.includes(String(loginSchoolCd));
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set('studentHeading', kana ? 'きょうは なにを しますか？' : '今日は何をしますか？');
+  set('smLendBig', kana ? 'かす' : '貸す');
+  set('smLendSub', kana ? '本を かしだす' : '本を貸し出す');
+  set('smRetBig',  kana ? 'かえす' : '返す');
+  set('smRetSub',  kana ? '本が もどってきた' : '本が戻ってきた');
+  const isbn = document.getElementById('homeIsbn');
+  if (isbn) isbn.placeholder = kana ? 'バーコードを ピッ' : 'バーコードを読み取り';
+  const fb = document.getElementById('homeFeedback');
+  if (fb) fb.innerHTML = '';
+  document.body.classList.add('student-mode');
   switchTab('home');
+  setScanMode('lend');
+}
+
+// fix32：図書委員モードの見た目を元に戻す（終了・ログアウト時）
+function clearStudentModeUI() {
+  document.body.classList.remove('student-mode');
+  const isbn = document.getElementById('homeIsbn');
+  if (isbn) isbn.placeholder = 'スキャンまたはISBNを入力…';
 }
 
 function exitStudentMode() {
@@ -3420,6 +3547,7 @@ function exitStudentMode() {
 
   document.getElementById('studentBanner')?.remove();
   document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '');
+  clearStudentModeUI();   // fix32
 
   ['tab-stats','tab-inv','tab-settings'].forEach(id => {
     const el = document.getElementById(id);
@@ -5922,6 +6050,7 @@ async function doLogout() {
     if (el) el.style.display = '';
   });
   document.getElementById('studentBanner')?.remove();
+  clearStudentModeUI();   // fix32
   document.getElementById('guestBanner')?.remove();
   document.querySelectorAll('.screen').forEach(s => s.style.paddingTop = '');
   isStudentMode = false;
