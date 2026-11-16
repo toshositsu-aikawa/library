@@ -16,7 +16,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="図書館">
 <title>図書館管理システム</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
 /* ===== ログイン画面 ===== */
 #loginScreen {
@@ -1117,6 +1117,179 @@ html, body {
   font-family: 'Noto Sans JP', sans-serif; margin-right: 10px;
 }
 
+/* ===== fix31：ログイン画面の部品（色はテーマごとに上書き） ===== */
+.login-tabs { display: flex; gap: 0; margin-bottom: 18px; border-radius: 12px; overflow: hidden; border: 1.5px solid #3a3f5c; }
+.login-tab { flex: 1; padding: 14px 8px; border: none; background: #1e2235; color: #8b90a8; font-size: 15px; font-weight: 700; cursor: pointer; }
+.login-tab.active { background: #3b82f6; color: #fff; }
+.login-tab.student.active { background: #10b981; color: #fff; }
+.login-sub-btn { width: 100%; padding: 10px; background: transparent; border: 1px solid #3a3f5c; border-radius: 10px; color: #8b90a8; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.login-sub-text { font-size: 13px; color: #8b90a8; margin-bottom: 10px; text-align: center; }
+.login-barcode-input { width: 100%; padding: 14px; border-radius: 12px; border: 2px solid #3b82f6; background: #1e2235; color: #dde1ee; font-size: 15px; box-sizing: border-box; text-align: center; outline: none; ime-mode: disabled; }
+
+/* ============================================================
+   fix31：あかるいテーマ（標準）— 明るい色・丸み・大きめのボタン
+   先生・指導員用の各画面とモーダルに適用。管理者ダッシュボードは従来の見た目のまま
+   ============================================================ */
+:root { --on-green: #000; --on-orange: #000; }
+body { --text1: var(--text); }
+body.theme-pop {
+  --bg:      #EEF4FF;
+  --bg2:     #FFFFFF;
+  --bg3:     #F1F6FF;
+  --bg4:     #E2EBFB;
+  --bg5:     #CFDDF7;
+  --border:  rgba(29,79,191,0.10);
+  --border2: #C5D5F5;
+  --text:    #14213D;
+  --text2:   #3D4F7A;
+  --text3:   #5D6D96;
+  --blue:    #1D4FBF;
+  --blue-dim: rgba(29,79,191,0.10);
+  --green:   #0B6B5E;
+  --green-dim: rgba(11,107,94,0.12);
+  --red:     #B3261E;
+  --red-dim: rgba(179,38,30,0.10);
+  --yellow:  #8A5A00;
+  --yellow-dim: rgba(242,182,61,0.24);
+  --orange:  #A84A08;
+  --orange-dim: rgba(255,140,66,0.16);
+  --gold:    #8A5A00;
+  --gold-dim: rgba(242,182,61,0.24);
+  --on-green: #fff;
+  --on-orange: #fff;
+  --pop-shadow: 0 2px 0 #D6E2FA;
+  --pop-font: 'M PLUS Rounded 1c', 'Hiragino Maru Gothic ProN', 'Noto Sans JP', sans-serif;
+  font-family: var(--pop-font);
+}
+/* 管理者ダッシュボードは従来（ダーク）の配色のまま */
+body.theme-pop #screen-admin {
+  --bg: #0c0e14; --bg2: #13161f; --bg3: #1a1e2b; --bg4: #222736; --bg5: #2a3044;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+  --text: #dde1ee; --text2: #838aa3; --text3: #4d556e; --text1: #dde1ee;
+  --blue: #5b9cf6; --blue-dim: rgba(91,156,246,0.12);
+  --green: #3ecf8e; --green-dim: rgba(62,207,142,0.12);
+  --red: #f66; --red-dim: rgba(255,102,102,0.12);
+  --yellow: #f5c542; --yellow-dim: rgba(245,197,66,0.12);
+  --orange: #ff8c42; --orange-dim: rgba(255,140,66,0.12);
+  --gold: #d4a543; --gold-dim: rgba(212,165,67,0.12);
+  --on-green: #000; --on-orange: #000;
+  background: var(--bg); color: var(--text);
+  font-family: 'Noto Sans JP', sans-serif;
+}
+
+/* ---- 文字 ---- */
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay, .tab-bar) :is(button, input, select, textarea, .btn, .scan-mode-btn, .search-input, .form-input, .form-select, .bp-choice, .bp-print, .bp-seg button, .bp-back) {
+  font-family: var(--pop-font);
+}
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) :is(.topbar-title, .card-header h2, .section-title-text, .modal-title) {
+  font-family: var(--pop-font); font-weight: 800;
+}
+
+/* ---- 上のバー ---- */
+body.theme-pop .screen:not(#screen-admin) .topbar { background: var(--bg); border-bottom: none; height: 76px; }
+body.theme-pop .screen:not(#screen-admin) .topbar-title { font-size: 23px; }
+body.theme-pop .screen:not(#screen-admin) .topbar-school {
+  background: #fff; border: 2px solid var(--border2); color: var(--text); font-weight: 700; font-size: 14px;
+}
+body.theme-pop .screen:not(#screen-admin) .icon-btn {
+  background: #fff; border: 2px solid var(--border2); border-radius: 26px; color: var(--text); font-weight: 700;
+}
+
+/* ---- カード・数字 ---- */
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .card {
+  border: none; border-radius: 22px; box-shadow: var(--pop-shadow);
+}
+body.theme-pop .screen:not(#screen-admin) .stat-box {
+  border: none; border-radius: 22px; box-shadow: var(--pop-shadow); padding: 16px 18px;
+}
+body.theme-pop .screen:not(#screen-admin) .stat-num { font-family: var(--pop-font); font-size: 34px; font-weight: 800; }
+body.theme-pop .screen:not(#screen-admin) .stat-label { font-size: 15px; font-weight: 800; color: var(--text); }
+body.theme-pop .screen:not(#screen-admin) .stat-sub { font-size: 12px; }
+body.theme-pop .screen:not(#screen-admin) .section-title-text { font-size: 16px; color: var(--text); }
+body.theme-pop .screen:not(#screen-admin) .card-header h2 { font-size: 16px; }
+
+/* ---- ホームの読み取り欄 ---- */
+body.theme-pop .scan-widget { border: none; border-radius: 24px; box-shadow: var(--pop-shadow); }
+body.theme-pop .scan-widget.focused { box-shadow: var(--pop-shadow), 0 0 0 3px rgba(29,79,191,0.18); }
+body.theme-pop .scan-label { font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: 0; text-transform: none; }
+body.theme-pop .scan-mode-row { gap: 10px; }
+body.theme-pop .scan-mode-btn {
+  min-height: 88px; border-radius: 20px; border: 3px solid var(--border2);
+  background: #DCE8FF; color: #1D4FBF; font-size: 19px; font-weight: 800;
+}
+body.theme-pop .scan-mode-btn.mode-return   { background: #FFF4D9; color: #4A3200; border-color: #F2B63D; }
+body.theme-pop .scan-mode-btn.mode-register { background: #E3F7F3; color: #07463D; border-color: #7CCFC2; }
+body.theme-pop .scan-mode-btn.active { background: #1D4FBF; color: #fff; border-color: #1D4FBF; box-shadow: 0 4px 0 #163C91; }
+body.theme-pop .scan-mode-btn.mode-return.active   { background: #FFC533; color: #3A2700; border-color: #FFC533; box-shadow: 0 4px 0 #D99A00; }
+body.theme-pop .scan-mode-btn.mode-register.active { background: #0B6B5E; color: #fff; border-color: #0B6B5E; box-shadow: 0 4px 0 #074B42; }
+body.theme-pop .scan-isbn {
+  min-height: 64px; border-radius: 18px; border: 3px solid var(--blue); background: #F7FAFF; font-size: 18px; font-weight: 600;
+}
+body.theme-pop .scan-isbn::placeholder { font-family: var(--pop-font); font-size: 16px; font-weight: 700; color: var(--text3); }
+body.theme-pop .scan-go { width: 64px; height: 64px; border-radius: 18px; font-size: 26px; }
+body.theme-pop .feedback { border-radius: 18px; padding: 16px 18px; }
+body.theme-pop .fb-title { font-size: 16px; }
+body.theme-pop .fb-body { font-size: 14px; }
+
+/* ---- ボタン・入力欄 ---- */
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .btn { border-radius: 28px; min-height: 56px; font-size: 16px; font-weight: 800; }
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .btn-ghost { background: #fff; color: var(--text); border: 2px solid var(--border2); }
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .btn-success { color: #fff; }
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) :is(.form-input, .form-select) {
+  border-radius: 14px; border-width: 2px; background-color: #F7FAFF; min-height: 54px; font-size: 16px;
+}
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .form-label { font-size: 14px; font-weight: 700; color: var(--text); }
+body.theme-pop .search-input { border-radius: 18px; border-width: 2px; min-height: 58px; font-size: 16px; }
+body.theme-pop .segmented { border-radius: 16px; padding: 4px; }
+body.theme-pop .seg-btn { border-radius: 12px; font-size: 14px; font-weight: 700; color: var(--text2); }
+body.theme-pop .seg-btn.active { background: var(--blue); color: #fff; }
+body.theme-pop .callout { border-radius: 16px; font-size: 14px; }
+
+/* ---- 一覧 ---- */
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .list-item { min-height: 72px; }
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .list-title { font-size: 16px; font-weight: 700; }
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .list-meta { font-size: 13px; color: var(--text2); }
+body.theme-pop :is(.screen:not(#screen-admin), .modal-overlay) .list-icon { border-radius: 12px; border: none; background: var(--bg4); }
+body.theme-pop .status-pill { font-size: 13px; padding: 5px 12px; }
+body.theme-pop .act-text { font-size: 14px; }
+body.theme-pop .school-card { border-radius: 18px; border-width: 2px; }
+body.theme-pop .finish-stat { border-radius: 18px; }
+
+/* ---- 下のタブ ---- */
+body.theme-pop .tab-bar { background: #fff; border-top: 2px solid #D6E2FA; }
+body.theme-pop .tab-item { margin: 8px 4px; border-radius: 18px; padding: 4px; }
+body.theme-pop .tab-icon { font-size: 28px; }
+body.theme-pop .tab-label { font-size: 13px; font-weight: 800; color: var(--text); }
+body.theme-pop .tab-item.active { background: var(--blue); }
+body.theme-pop .tab-item.active .tab-label { color: #fff; }
+body.theme-pop .tab-item.active .tab-icon { transform: none; }
+body.theme-pop .tab-indicator { display: none; }
+
+/* ---- モーダル ---- */
+body.theme-pop .modal-overlay { background: rgba(20,33,61,0.45); }
+body.theme-pop .modal-sheet { border-radius: 28px 28px 0 0; }
+body.theme-pop .modal-title { font-size: 18px; }
+body.theme-pop .modal-close { width: 44px; height: 44px; border-radius: 22px; background: var(--bg4); color: var(--text); font-size: 18px; }
+
+/* ---- ログイン画面 ---- */
+body.theme-pop #loginScreen { background: #EEF4FF; font-family: var(--pop-font); }
+body.theme-pop #loginScreen :is(button, input) { font-family: var(--pop-font); }
+body.theme-pop .login-card { background: #fff; border: none; border-radius: 28px; box-shadow: 0 4px 0 #D6E2FA; }
+body.theme-pop .login-logo h1 { color: #14213D; font-weight: 800; }
+body.theme-pop .login-field label { color: #3D4F7A; font-size: 14px; font-weight: 700; }
+body.theme-pop .login-field input { background: #F7FAFF; border: 2px solid #C5D5F5; color: #14213D; border-radius: 14px; min-height: 56px; font-size: 17px; }
+body.theme-pop .login-field input:focus { border-color: #1D4FBF; }
+body.theme-pop .login-btn { background: #1D4FBF; border-radius: 30px; min-height: 60px; font-weight: 800; box-shadow: 0 4px 0 #163C91; }
+body.theme-pop .login-error { color: #B3261E; }
+body.theme-pop .login-tabs { border-color: #C5D5F5; border-radius: 18px; }
+body.theme-pop .login-tab { background: #fff; color: #3D4F7A; }
+body.theme-pop .login-tab.active { background: #1D4FBF; color: #fff; }
+body.theme-pop .login-tab.student.active { background: #0B6B5E; color: #fff; }
+body.theme-pop .login-sub-btn { border: 2px solid #C5D5F5; color: #3D4F7A; border-radius: 22px; min-height: 44px; }
+body.theme-pop .login-sub-text { color: #3D4F7A; }
+body.theme-pop .login-barcode-input { background: #F7FAFF; color: #14213D; border-color: #1D4FBF; }
+body.theme-pop #studentLoginBtn { background: #0B6B5E !important; box-shadow: 0 4px 0 #074B42; }
+
 /* ===== DIVIDER ===== */
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 </style>
@@ -1134,13 +1307,11 @@ html, body {
     <!-- fix29：メール・パスワードでのログインを最初から表示（バーコードは下の折りたたみへ） -->
     <div id="manualLoginArea">
       <!-- モード切り替えタブ -->
-      <div style="display:flex;gap:0;margin-bottom:18px;border-radius:12px;overflow:hidden;border:1.5px solid #3a3f5c;">
-        <button id="loginTabTeacher" onclick="switchLoginTab('teacher')"
-          style="flex:1;padding:14px 8px;border:none;background:#3b82f6;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">
+      <div class="login-tabs">
+        <button class="login-tab active" id="loginTabTeacher" onclick="switchLoginTab('teacher')">
           👩‍🏫 先生・図書館員
         </button>
-        <button id="loginTabStudent" onclick="switchLoginTab('student')"
-          style="flex:1;padding:14px 8px;border:none;background:#1e2235;color:#8b90a8;font-size:15px;font-weight:700;cursor:pointer;">
+        <button class="login-tab student" id="loginTabStudent" onclick="switchLoginTab('student')">
           📚 図書委員
         </button>
       </div>
@@ -1178,19 +1349,18 @@ html, body {
 
     <!-- バーコードでログイン（折りたたみ。バーコードが読めるようになったら使う） -->
     <div style="margin-top:18px;">
-      <button onclick="toggleBarcodeLogin()"
-        style="width:100%;padding:10px;background:transparent;border:1px solid #3a3f5c;border-radius:10px;color:#8b90a8;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+      <button class="login-sub-btn" onclick="toggleBarcodeLogin()">
         <span id="barcodeLoginToggleIcon">›</span>
         <span>🔑 バーコードでログイン</span>
       </button>
       <div id="barcodeLoginArea" style="display:none;margin-top:12px;">
-        <div style="font-size:13px;color:#8b90a8;margin-bottom:10px;text-align:center;">ログイン用バーコードをスキャンしてください</div>
+        <div class="login-sub-text">ログイン用バーコードをスキャンしてください</div>
         <input type="text" id="loginBarcodeInput"
           placeholder="バーコードをスキャン…"
           autocomplete="off"
           inputmode="none"
           lang="en"
-          style="width:100%;padding:14px;border-radius:12px;border:2px solid #3b82f6;background:#1e2235;color:#dde1ee;font-size:15px;box-sizing:border-box;text-align:center;outline:none;ime-mode:disabled;"
+          class="login-barcode-input"
           oninput="handleLoginBarcodeScan(this.value)" />
       </div>
     </div>
@@ -1215,7 +1385,7 @@ html, body {
 
     <!-- スキャンウィジェット -->
     <div class="scan-widget" id="homeScanWidget">
-      <div class="scan-label">ISBNスキャン</div>
+      <div class="scan-label">本のバーコードを読み取る</div>
       <div class="scan-mode-row">
         <button class="scan-mode-btn active" id="hm-lend" onclick="setScanMode('lend')">📤 貸出</button>
         <button class="scan-mode-btn mode-return" id="hm-ret" onclick="setScanMode('ret')">📥 返却</button>
@@ -1394,7 +1564,7 @@ html, body {
               </div>
             </div>
           </div>
-          <button id="mainSessionBtn" onclick="joinOrStartMainSession()" style="width:100%;padding:14px;background:var(--green);color:#000;border:none;border-radius:10px;font-weight:700;font-size:1em;cursor:pointer;">
+          <button id="mainSessionBtn" onclick="joinOrStartMainSession()" style="width:100%;padding:14px;background:var(--green);color:var(--on-green);border:none;border-radius:10px;font-weight:700;font-size:1em;cursor:pointer;">
             🚀 点検を開始する
           </button>
         </div>
@@ -1746,7 +1916,11 @@ html, body {
         <div id="acc-theme-icon" style="color:var(--text3);font-size:18px;">›</div>
       </div>
       <div id="acc-theme" style="display:none;padding:0 16px 16px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div onclick="setTheme('pop')" id="theme-pop" style="border-radius:12px;border:2px solid var(--border2);padding:16px 8px;text-align:center;cursor:pointer;background:#EEF4FF;color:#14213D;">
+            <div style="font-size:24px;margin-bottom:6px;">🌈</div>
+            <div style="font-size:13px;font-weight:600;">あかるい（標準）</div>
+          </div>
           <div onclick="setTheme('dark')" id="theme-dark" style="border-radius:12px;border:2px solid var(--border2);padding:16px 8px;text-align:center;cursor:pointer;background:#0c0e14;color:#dde1ee;">
             <div style="font-size:24px;margin-bottom:6px;">🌙</div>
             <div style="font-size:13px;font-weight:600;">ダーク</div>
@@ -2292,7 +2466,7 @@ html, body {
       </div>
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="cancelWithdrawModal()">キャンセル</button>
-        <button class="btn" style="background:var(--orange);color:#000;font-weight:700;" onclick="submitWithdraw()">✓ 除籍登録</button>
+        <button class="btn" style="background:var(--orange);color:var(--on-orange);font-weight:700;" onclick="submitWithdraw()">✓ 除籍登録</button>
       </div>
     </div>
   </div>
@@ -2497,7 +2671,7 @@ html, body {
           </select>
           <select id="bulkWithdrawFiscalYearTop" class="form-select" style="width:110px;"></select>
         </div>
-        <button class="btn" style="width:100%;background:var(--orange);color:#000;font-weight:700;" onclick="executeBulkWithdraw()">
+        <button class="btn" style="width:100%;background:var(--orange);color:var(--on-orange);font-weight:700;" onclick="executeBulkWithdraw()">
           ✓ 選択した本を除籍する
         </button>
       </div>
@@ -2561,7 +2735,7 @@ html, body {
           </select>
           <select id="wdnoFiscalYear" class="form-select" style="width:120px;"></select>
         </div>
-        <button class="btn" id="wdnoExecBtn" style="width:100%;background:var(--orange);color:#000;font-weight:700;" onclick="executeWithdrawByNo()">
+        <button class="btn" id="wdnoExecBtn" style="width:100%;background:var(--orange);color:var(--on-orange);font-weight:700;" onclick="executeWithdrawByNo()">
           ✓ 選択した0冊を除籍する
         </button>
       </div>
@@ -2888,7 +3062,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-16-fix30（バーコード印刷画面を作り直し：「何を印刷しますか？」から選ぶ形式・大きなボタン）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-16-fix31（あかるいテーマを標準に：先生・指導員用画面とログイン画面の配色・丸み・ボタンの大きさ。管理者ダッシュボードは従来のまま）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -2958,12 +3132,13 @@ function isLocalBarcode(val) {
 
 // ===== テーマ切り替え =====
 function setTheme(theme) {
-  document.body.classList.remove('theme-light', 'theme-blue');
+  document.body.classList.remove('theme-light', 'theme-blue', 'theme-pop');
+  if (theme === 'pop')   document.body.classList.add('theme-pop');   // fix31：あかるいテーマ（標準）
   if (theme === 'light') document.body.classList.add('theme-light');
   if (theme === 'blue')  document.body.classList.add('theme-blue');
   localStorage.setItem('lib_theme', theme);
   // 選択中のスタイルを更新
-  const themeList = ['dark', 'light', 'blue'];
+  const themeList = ['pop', 'dark', 'light', 'blue'];
   themeList.forEach(t => {
     const el = document.getElementById('theme-' + t);
     if (!el) return;
@@ -2979,7 +3154,9 @@ function updateThemeButtons(theme) {
 
 // 起動時にテーマを復元
 ;(function() {
-  const saved = localStorage.getItem('lib_theme') || 'dark'
+  // fix31：標準を「あかるい」に変更。これまでの端末も一度だけ「あかるい」に切り替える（その後は設定で自由に変更可）
+  let saved = localStorage.getItem('lib_theme') || 'pop'
+  if (!localStorage.getItem('lib_theme_fix31')) { saved = 'pop'; localStorage.setItem('lib_theme_fix31', '1'); }
   setTheme(saved)
 })()
 
@@ -3160,10 +3337,9 @@ function switchLoginTab(tab) {
   const isTeacher = tab === 'teacher';
   document.getElementById('loginFormTeacher').style.display = isTeacher ? '' : 'none';
   document.getElementById('loginFormStudent').style.display = isTeacher ? 'none' : '';
-  document.getElementById('loginTabTeacher').style.background = isTeacher ? '#3b82f6' : '#1e2235';
-  document.getElementById('loginTabTeacher').style.color = isTeacher ? '#fff' : '#8b90a8';
-  document.getElementById('loginTabStudent').style.background = isTeacher ? '#1e2235' : '#10b981';
-  document.getElementById('loginTabStudent').style.color = isTeacher ? '#8b90a8' : '#fff';
+  // fix31：色はCSS（テーマごと）で決めるため、ここではクラスだけ切り替える
+  document.getElementById('loginTabTeacher').classList.toggle('active', isTeacher);
+  document.getElementById('loginTabStudent').classList.toggle('active', !isTeacher);
   document.getElementById('loginError').textContent = '';
 }
 
@@ -3327,7 +3503,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
+  updateThemeButtons(localStorage.getItem('lib_theme') || 'pop');
 
   // 起動時セッションチェック：5秒以内に完了しない場合は強制クリアして再読み込み
   let _sessionResolved = false;
@@ -3642,7 +3818,7 @@ function toggleAccordion(id) {
     if (id === 'acc-ndc')   refreshNdcFetchStat();
     if (id === 'acc-ledger') refreshLedgerSummary();   // fix26
     if (id === 'acc-ai-ndc') refreshAiNdcFetchStat();
-    if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('lib_theme') || 'dark');
+    if (id === 'acc-theme') updateThemeButtons(localStorage.getItem('lib_theme') || 'pop');
     if (id === 'acc-backup') {
       const el = document.getElementById('backupLastDate');
       if (el) el.textContent = `前回のバックアップ: ${backupDates[currentSchoolCd] || '—'}`;
@@ -4255,7 +4431,7 @@ async function loadLabelCandidates(mode) {
 function renderLabelCandidates() {
   const listEl = document.getElementById('labelCandList');
   const KIND_BADGE = {
-    new:   '<span style="font-size:.7em;background:var(--green);color:#000;border-radius:6px;padding:1px 6px;font-weight:700;">新規採番</span>',
+    new:   '<span style="font-size:.7em;background:var(--green);color:var(--on-green);border-radius:6px;padding:1px 6px;font-weight:700;">新規採番</span>',
     isbn:  '<span style="font-size:.7em;background:var(--blue);color:#fff;border-radius:6px;padding:1px 6px;font-weight:700;">ISBN再印刷</span>',
     local: '<span style="font-size:.7em;background:var(--bg4);color:var(--text2);border-radius:6px;padding:1px 6px;font-weight:700;">独自バーコード済</span>',
   };
@@ -5657,7 +5833,7 @@ function showMultiBookModal(books, isbn, mode, onSelect, onNew = null) {
     const regNo = b.registration_no ? `登録番号：${b.registration_no}` : `（登録番号なし）`;
     const statusBadge = b.status === 'lent'
       ? '<span style="font-size:11px;background:var(--red);color:#fff;padding:2px 6px;border-radius:6px;margin-left:6px;">貸出中</span>'
-      : '<span style="font-size:11px;background:var(--green);color:#000;padding:2px 6px;border-radius:6px;margin-left:6px;">貸出可</span>';
+      : '<span style="font-size:11px;background:var(--green);color:var(--on-green);padding:2px 6px;border-radius:6px;margin-left:6px;">貸出可</span>';
     return `<div class="list-item" onclick="_multiBookSelect(${i})" style="cursor:pointer;border-radius:10px;background:var(--bg3);margin-bottom:8px;border:1.5px solid transparent;" id="multiBookItem-${i}">
       <div class="list-info">
         <div class="list-title" style="font-family:'JetBrains Mono',monospace;">${regNo}${statusBadge}</div>
@@ -7478,7 +7654,7 @@ function showRegisterModal(isbn, bookInfo, shelfId = null, context = 'home') {
         </div>
         <div style="display:flex;gap:10px;">
           <button id="unregRegisterBtn"
-            style="flex:1;padding:16px;background:var(--green);color:#000;border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
+            style="flex:1;padding:16px;background:var(--green);color:var(--on-green);border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
             ✅ 登録する
           </button>
           <button id="unregSkipBtn"
@@ -7532,7 +7708,7 @@ function showRegisterModal(isbn, bookInfo, shelfId = null, context = 'home') {
         </div>
         <div style="display:flex;gap:10px;">
           <button id="unregRegisterBtn"
-            style="flex:1;padding:16px;background:var(--green);color:#000;border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
+            style="flex:1;padding:16px;background:var(--green);color:var(--on-green);border:none;border-radius:12px;font-weight:700;font-size:1em;cursor:pointer;">
             ✅ 登録する
           </button>
           <button id="unregSkipBtn"
