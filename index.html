@@ -1500,6 +1500,10 @@ html, body {
     </div>
   </div>
   <div class="scroll-content">
+    <!-- fix28：年度末 蔵書冊数集計（町全体） -->
+    <button class="btn btn-success" style="width:100%;margin-bottom:14px;" onclick="openYearEndModal('town')">
+      📊 年度末の蔵書冊数集計（町全体・Excel出力）
+    </button>
     <div id="adminDashBody">
       <div style="text-align:center;color:var(--text3);padding:40px 20px;font-size:14px;">読み込み中…</div>
     </div>
@@ -1634,9 +1638,13 @@ html, body {
         <div class="section-title-text">蔵書構成（NDC分類別）</div>
         <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px;" onclick="loadCollectionComposition(currentSchoolCd)">🔄 更新</button>
       </div>
-      <div class="card" style="margin-bottom:16px;" id="collectionComposition">
+      <div class="card" style="margin-bottom:10px;" id="collectionComposition">
         <div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">読み込み中…</div>
       </div>
+      <!-- fix27：年度末 蔵書冊数集計 -->
+      <button class="btn btn-success" style="width:100%;margin-bottom:16px;" onclick="openYearEndModal('school')">
+        📊 年度末の蔵書冊数集計（Excel出力）
+      </button>
 
       <!-- よく借りられている本（本校） -->
       <div class="section-header-row">
@@ -2595,6 +2603,31 @@ html, body {
   </div>
 </div>
 
+<!-- fix27/fix28：年度末 蔵書冊数集計モーダル（学校別・町全体で共用） -->
+<div class="modal-overlay" id="yearEndModal" onclick="closeModalOutside(event,'yearEndModal')">
+  <div class="modal-sheet" style="max-height:90vh;">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="yeModalTitle">📊 年度末の蔵書冊数集計</div>
+      <button class="modal-close" onclick="closeModal('yearEndModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="yeModalDesc" style="font-size:.85em;color:var(--text2);margin-bottom:14px;line-height:1.7;"></div>
+      <div class="form-group">
+        <label class="form-label">集計する年度</label>
+        <select class="form-select" id="yeYear"></select>
+      </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:.82em;color:var(--text2);margin-bottom:16px;line-height:1.6;cursor:pointer;">
+        <input type="checkbox" id="yeUseRegistered" style="margin-top:4px;flex-shrink:0;">
+        <span>購入年度も納品日も空欄の本は、システムへの登録日がこの年度なら「受入」に数える<br>
+          <span style="color:var(--text3);">（通常はオフ。点検で見つけて登録した古い本まで受入に入ってしまうため）</span></span>
+      </label>
+      <button class="btn btn-success" id="yeExportBtn" style="width:100%;" onclick="exportYearEndExcel()">📊 Excelに出力</button>
+      <div id="yeResult"></div>
+    </div>
+  </div>
+</div>
+
 <!-- 本を追加モーダル -->
 <div class="modal-overlay" id="addBookModal" onclick="closeModalOutside(event,'addBookModal')">
   <div class="modal-sheet">
@@ -2712,7 +2745,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-10-04-fix26（紙台帳データの取り込み：ledger_books・列対応づけ・プレビュー・取り消し）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-16-fix28（年度末 蔵書冊数集計：学校別＋管理者用の町全体版・分類別・円グラフ付きExcel出力）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -9697,6 +9730,622 @@ async function exportWithdrawExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '除籍リスト');
   XLSX.writeFile(wb, `除籍リスト_${schoolName}_${year}年度.xlsx`);
+}
+
+// ============================================================
+// fix27：年度末 蔵書冊数集計（Excel出力・分類別・円グラフ付き）
+// fix28：管理者用の町全体版（町全体・小学校計・中学校計・学校別一覧・各学校のシートを1つのブックに）
+// 前年度末冊数 ＋ 受入 − 除籍 ＝ 年度末冊数 を、分類ごとに1枚のシートにまとめる
+// 数え方は fix22 と同じ（登録番号ごとに1冊）
+// ※ SheetJS は円グラフを書き出せないため、このファイルだけ xlsx を自前で組み立てる（外部ライブラリなし）
+// ============================================================
+
+// 日付文字列（YYYY-MM-DD…）から年度（4月始まり）を返す。読めなければ null
+function yeDateToFiscalYear(s) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d{4})-(\d{1,2})/);
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]);
+  if (y < 1900 || mo < 1 || mo > 12) return null;
+  return mo >= 4 ? y : y - 1;
+}
+
+function yeFiscalLabel(fy) {
+  return fy >= 2019 ? `令和${fy - 2018}年度` : `${fy}年度`;
+}
+
+// 蔵書レコードの配列から、分類別の集計を作る（純粋関数）
+// opts.useRegisteredAt：購入年度・納品日が空欄で、登録日がこの年度の本を「受入」に数える
+function yeAggregate(books, fy, opts = {}) {
+  const cats = {};
+  const info = { unknownAcq: 0, unknownAcqRegisteredThisFy: 0, unknownWithdrawYear: 0, futureAcq: 0 };
+  const row = c => (cats[c] || (cats[c] = { prev: 0, bought: 0, donated: 0, withdrawn: 0 }));
+
+  books.forEach(b => {
+    const cat = (b.category && String(b.category).trim()) ? String(b.category).trim() : '未設定';
+
+    // 受入年度：購入年度 → 納品日の年度 の順で決める
+    let acq = null;
+    const pfy = Number(b.purchase_fiscal_year);
+    if (pfy >= 1900 && pfy <= 2200) acq = pfy;
+    if (acq === null) acq = yeDateToFiscalYear(b.delivery_date);
+    const acqUnknown = (acq === null);
+    const regFy = yeDateToFiscalYear(b.registered_at);
+    if (acqUnknown && opts.useRegisteredAt && regFy === fy) acq = fy;
+
+    // 除籍年度
+    let wd = Infinity;
+    if (b.status === 'withdrawn') {
+      const wfy = Number(b.withdrawn_fiscal_year);
+      wd = (wfy >= 1900 && wfy <= 2200) ? wfy : yeDateToFiscalYear(b.withdrawn_at);
+      if (wd === null) { info.unknownWithdrawYear++; return; }   // 年度不明の除籍は「以前に除籍済み」として扱う
+    }
+
+    if (acq !== null && acq > fy) { info.futureAcq++; return; }   // この年度より後に受け入れた本
+    if (wd < fy) return;                                          // この年度より前に除籍済み
+
+    if (acqUnknown && wd >= fy) {
+      info.unknownAcq++;
+      if (regFy === fy) info.unknownAcqRegisteredThisFy++;
+    }
+
+    const r = row(cat);
+    if (acq === fy) { if (b.is_donated) r.donated++; else r.bought++; }
+    else r.prev++;
+    if (wd === fy) r.withdrawn++;
+  });
+
+  const rows = yeOrderCats(Object.keys(cats)).map(c => {
+    const r = cats[c];
+    return { cat: c, prev: r.prev, bought: r.bought, donated: r.donated, withdrawn: r.withdrawn,
+             end: r.prev + r.bought + r.donated - r.withdrawn };
+  });
+  const total = rows.reduce((t, r) => ({
+    prev: t.prev + r.prev, bought: t.bought + r.bought, donated: t.donated + r.donated,
+    withdrawn: t.withdrawn + r.withdrawn, end: t.end + r.end,
+  }), { prev: 0, bought: 0, donated: 0, withdrawn: 0, end: 0 });
+  return { rows, total, info };
+}
+
+// 分類名を表示順（0類→9類→絵本→外国語→その他→未設定）に並べる
+function yeOrderCats(names) {
+  const set = new Set(names);
+  const known  = NDC_DISPLAY_ORDER.filter(c => c !== '未設定' && set.has(c));
+  const others = [...set].filter(c => !NDC_DISPLAY_ORDER.includes(c)).sort();
+  return known.concat(others).concat(set.has('未設定') ? ['未設定'] : []);
+}
+
+// 集計結果を、指定した分類の並び（全校共通）にそろえる。無い分類は0で埋める
+function yeAlignRows(agg, catList) {
+  const map = {};
+  agg.rows.forEach(r => { map[r.cat] = r; });
+  return catList.map(c => map[c] || { cat: c, prev: 0, bought: 0, donated: 0, withdrawn: 0, end: 0 });
+}
+
+// 複数の集計結果を足し合わせる（町全体・小学校計・中学校計用）
+function yeSumAggs(aggs, catList) {
+  const rows = catList.map(c => ({ cat: c, prev: 0, bought: 0, donated: 0, withdrawn: 0, end: 0 }));
+  const total = { prev: 0, bought: 0, donated: 0, withdrawn: 0, end: 0 };
+  const info = { unknownAcq: 0, unknownAcqRegisteredThisFy: 0, unknownWithdrawYear: 0, futureAcq: 0 };
+  aggs.forEach(a => {
+    yeAlignRows(a, catList).forEach((r, i) => {
+      ['prev', 'bought', 'donated', 'withdrawn', 'end'].forEach(k => { rows[i][k] += r[k]; total[k] += r[k]; });
+    });
+    Object.keys(info).forEach(k => { info[k] += a.info[k] || 0; });
+  });
+  return { rows, total, info };
+}
+
+// ---- xlsx（zip）を自前で作るための最小限の道具 ----
+function yeXmlEsc(s) {
+  return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+
+function yeCrc32(bytes) {
+  if (!yeCrc32.table) {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    yeCrc32.table = t;
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = yeCrc32.table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+// files: [{ name, text }] → 無圧縮zipの Uint8Array
+function yeZipStore(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  const u16 = n => [n & 0xFF, (n >>> 8) & 0xFF];
+  const u32 = n => [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+  const DOS_TIME = [0, 0], DOS_DATE = u16(((2026 - 1980) << 9) | (4 << 5) | 1);
+
+  files.forEach(f => {
+    const name = enc.encode(f.name);
+    const data = enc.encode(f.text);
+    const crc = yeCrc32(data);
+    const common = [].concat(u16(20), u16(0x0800), u16(0), DOS_TIME, DOS_DATE, u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+    const local = new Uint8Array([0x50, 0x4B, 0x03, 0x04].concat(common));
+    parts.push(local, name, data);
+    central.push({ bytes: new Uint8Array([0x50, 0x4B, 0x01, 0x02].concat(u16(20), common, u16(0), u16(0), u16(0), u32(0), u32(offset))), name });
+    offset += local.length + name.length + data.length;
+  });
+
+  const cdStart = offset;
+  let cdSize = 0;
+  central.forEach(c => { parts.push(c.bytes, c.name); cdSize += c.bytes.length + c.name.length; });
+  parts.push(new Uint8Array([0x50, 0x4B, 0x05, 0x06].concat(u16(0), u16(0), u16(files.length), u16(files.length), u32(cdSize), u32(cdStart), u16(0))));
+
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let pos = 0;
+  parts.forEach(p => { out.set(p, pos); pos += p.length; });
+  return out;
+}
+
+// ---- xlsx の部品 ----
+const YE_X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+const yeSCell = (ref, text, style) => `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${yeXmlEsc(text)}</t></is></c>`;
+const yeNCell = (ref, v, style) => `<c r="${ref}" s="${style}"><v>${v}</v></c>`;
+const yeFCell = (ref, f, v, style) => `<c r="${ref}" s="${style}"><f>${yeXmlEsc(f)}</f><v>${v}</v></c>`;
+const yeRowXml = (r, cells, ht) => `<row r="${r}"${ht ? ` ht="${ht}" customHeight="1"` : ''}>${cells.join('')}</row>`;
+const yeSheetRef = name => `'${String(name).replace(/'/g, "''")}'`;
+
+function yeWrapSheet(rowsXml, lastRow, hasDrawing, firstColWidth) {
+  return YE_X +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
+    `<dimension ref="A1:H${lastRow}"/>` +
+    '<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>' +
+    '<sheetFormatPr defaultRowHeight="18"/>' +
+    `<cols><col min="1" max="1" width="${firstColWidth}" customWidth="1"/><col min="2" max="7" width="13.5" customWidth="1"/><col min="8" max="8" width="10.5" customWidth="1"/></cols>` +
+    `<sheetData>${rowsXml.join('')}</sheetData>` +
+    '<printOptions horizontalCentered="1"/>' +
+    '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
+    '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1"/>' +
+    (hasDrawing ? '<drawing r:id="rId1"/>' : '') +
+    '</worksheet>';
+}
+
+// 分類別シート（表＋円グラフ）を1枚作る
+// spec: { name, title, subtitle, endLabel, rows, total, notes, sumSheets }
+//   sumSheets を渡すと、B・C・D・F列は「それらのシートの同じセルの合計」という式になる（町全体・小中計用）
+function yeCategorySheet(spec) {
+  const n = spec.rows.length;
+  const HEAD = 4, FIRST = 5, LAST = FIRST + n - 1, TOTAL = LAST + 1;
+  const endLabel = spec.endLabel;
+  const T = spec.total;
+  const src = (col, x, v, style) => spec.sumSheets
+    ? yeFCell(`${col}${x}`, spec.sumSheets.map(s => `${yeSheetRef(s)}!${col}${x}`).join('+'), v, style)
+    : yeNCell(`${col}${x}`, v, style);
+
+  const rowsXml = [];
+  rowsXml.push(yeRowXml(1, [yeSCell('A1', spec.title, 1)], 26));
+  rowsXml.push(yeRowXml(2, [yeSCell('A2', spec.subtitle, 9)]));
+  rowsXml.push(yeRowXml(HEAD, [
+    yeSCell(`A${HEAD}`, '分類', 2), yeSCell(`B${HEAD}`, '前年度末冊数', 2), yeSCell(`C${HEAD}`, '受入（購入）', 2),
+    yeSCell(`D${HEAD}`, '受入（寄贈）', 2), yeSCell(`E${HEAD}`, '受入 計', 2), yeSCell(`F${HEAD}`, '除籍', 2),
+    yeSCell(`G${HEAD}`, endLabel, 2), yeSCell(`H${HEAD}`, '構成比', 2),
+  ], 30));
+  spec.rows.forEach((r, i) => {
+    const x = FIRST + i;
+    rowsXml.push(yeRowXml(x, [
+      yeSCell(`A${x}`, r.cat, 3), src('B', x, r.prev, 4), src('C', x, r.bought, 4), src('D', x, r.donated, 4),
+      yeFCell(`E${x}`, `C${x}+D${x}`, r.bought + r.donated, 4), src('F', x, r.withdrawn, 4),
+      yeFCell(`G${x}`, `B${x}+E${x}-F${x}`, r.end, 4),
+      yeFCell(`H${x}`, `IF($G$${TOTAL}=0,0,G${x}/$G$${TOTAL})`, T.end ? r.end / T.end : 0, 5),
+    ], 19));
+  });
+  const sum = col => `SUM(${col}${FIRST}:${col}${LAST})`;
+  rowsXml.push(yeRowXml(TOTAL, [
+    yeSCell(`A${TOTAL}`, '合計', 6), yeFCell(`B${TOTAL}`, sum('B'), T.prev, 7), yeFCell(`C${TOTAL}`, sum('C'), T.bought, 7),
+    yeFCell(`D${TOTAL}`, sum('D'), T.donated, 7), yeFCell(`E${TOTAL}`, sum('E'), T.bought + T.donated, 7),
+    yeFCell(`F${TOTAL}`, sum('F'), T.withdrawn, 7), yeFCell(`G${TOTAL}`, sum('G'), T.end, 7),
+    yeFCell(`H${TOTAL}`, `IF(G${TOTAL}=0,0,SUM(H${FIRST}:H${LAST}))`, T.end ? 1 : 0, 8),
+  ], 22));
+
+  // グラフの位置（表の下）
+  const CHART_TOP = TOTAL + 1;          // 0始まりの行番号（＝合計行の2行下から）
+  const CHART_ROWS = 24;
+  const NOTE = CHART_TOP + CHART_ROWS + 2;
+  spec.notes.forEach((t, i) => rowsXml.push(yeRowXml(NOTE + i, [yeSCell(`A${NOTE + i}`, t, 9)])));
+  const sheetXml = yeWrapSheet(rowsXml, NOTE + spec.notes.length - 1, true, 25);
+
+  // ---- 円グラフ ----
+  const q = yeXmlEsc(yeSheetRef(spec.name));
+  const catPts = spec.rows.map((r, i) => `<c:pt idx="${i}"><c:v>${yeXmlEsc(r.cat)}</c:v></c:pt>`).join('');
+  const valPts = spec.rows.map((r, i) => `<c:pt idx="${i}"><c:v>${r.end}</c:v></c:pt>`).join('');
+  const dPts = spec.rows.map((r, i) => {
+    const color = (NDC_CHART_COLORS[r.cat] || '#7a8090').replace('#', '').toUpperCase();
+    return `<c:dPt><c:idx val="${i}"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln></c:spPr></c:dPt>`;
+  }).join('');
+  const chartTitle = `${spec.chartPrefix || ''}分類別の蔵書構成（${endLabel}）`;
+  const chartXml = YE_X +
+    '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<c:roundedCorners val="0"/>' +
+    '<c:chart>' +
+    `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1300" b="1"/></a:pPr><a:r><a:rPr lang="ja-JP" sz="1300" b="1"/><a:t>${yeXmlEsc(chartTitle)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>` +
+    '<c:autoTitleDeleted val="0"/>' +
+    '<c:plotArea><c:layout/>' +
+    '<c:pieChart><c:varyColors val="1"/>' +
+    '<c:ser><c:idx val="0"/><c:order val="0"/>' +
+    `<c:tx><c:strRef><c:f>${q}!$G$${HEAD}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${yeXmlEsc(endLabel)}</c:v></c:pt></c:strCache></c:strRef></c:tx>` +
+    dPts +
+    '<c:dLbls><c:numFmt formatCode="0.0%" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>' +
+    '<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="ja-JP"/></a:p></c:txPr>' +
+    '<c:dLblPos val="bestFit"/><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="1"/><c:showSerName val="0"/><c:showPercent val="1"/><c:showBubbleSize val="0"/><c:separator> </c:separator><c:showLeaderLines val="1"/></c:dLbls>' +
+    `<c:cat><c:strRef><c:f>${q}!$A$${FIRST}:$A$${LAST}</c:f><c:strCache><c:ptCount val="${n}"/>${catPts}</c:strCache></c:strRef></c:cat>` +
+    `<c:val><c:numRef><c:f>${q}!$G$${FIRST}:$G$${LAST}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${n}"/>${valPts}</c:numCache></c:numRef></c:val>` +
+    '</c:ser>' +
+    '<c:firstSliceAng val="0"/></c:pieChart>' +
+    '</c:plotArea>' +
+    '<c:legend><c:legendPos val="r"/><c:overlay val="0"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="ja-JP"/></a:p></c:txPr></c:legend>' +
+    '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/>' +
+    '</c:chart>' +
+    '<c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="BFBFBF"/></a:solidFill></a:ln></c:spPr>' +
+    '</c:chartSpace>';
+
+  const drawingXml = YE_X +
+    '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' +
+    '<xdr:twoCellAnchor editAs="oneCell">' +
+    `<xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${CHART_TOP}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>` +
+    `<xdr:to><xdr:col>8</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${CHART_TOP + CHART_ROWS}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>` +
+    '<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="分類別円グラフ"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>' +
+    '<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>' +
+    '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></a:graphicData></a:graphic>' +
+    '</xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>';
+
+  return { name: spec.name, sheetXml, chartXml, drawingXml };
+}
+
+// 学校別一覧シート（各学校シートの合計行を参照する）
+// spec: { name, title, subtitle, endLabel, groups: [{ label, schools: [{ name, total }] }], totalRow, notes }
+//   totalRow：各学校シートの合計行の行番号（全校共通）
+function yeSchoolListSheet(spec) {
+  const HEAD = 4;
+  const rowsXml = [];
+  rowsXml.push(yeRowXml(1, [yeSCell('A1', spec.title, 1)], 26));
+  rowsXml.push(yeRowXml(2, [yeSCell('A2', spec.subtitle, 9)]));
+  rowsXml.push(yeRowXml(HEAD, [
+    yeSCell(`A${HEAD}`, '学校', 2), yeSCell(`B${HEAD}`, '前年度末冊数', 2), yeSCell(`C${HEAD}`, '受入（購入）', 2),
+    yeSCell(`D${HEAD}`, '受入（寄贈）', 2), yeSCell(`E${HEAD}`, '受入 計', 2), yeSCell(`F${HEAD}`, '除籍', 2),
+    yeSCell(`G${HEAD}`, spec.endLabel, 2), yeSCell(`H${HEAD}`, '町全体に占める割合', 2),
+  ], 34));
+
+  // 先に行番号を割り振る（町全体の合計行を割合の式で使うため）
+  let x = HEAD + 1;
+  const plan = spec.groups.map(g => {
+    const first = x;
+    const schoolRows = g.schools.map(s => ({ s, x: x++ }));
+    return { g, first, last: x - 1, schoolRows, subRow: x++ };
+  });
+  const GRAND = x;
+  const grand = { prev: 0, bought: 0, donated: 0, withdrawn: 0, end: 0 };
+  plan.forEach(p => p.schoolRows.forEach(({ s }) => Object.keys(grand).forEach(k => { grand[k] += s.total[k]; })));
+  const pct = (r, v, style) => yeFCell(`H${r}`, `IF($G$${GRAND}=0,0,G${r}/$G$${GRAND})`, grand.end ? v / grand.end : 0, style);
+  const KEYS = { B: 'prev', C: 'bought', D: 'donated', F: 'withdrawn' };
+
+  plan.forEach(p => {
+    const sub = { prev: 0, bought: 0, donated: 0, withdrawn: 0, end: 0 };
+    p.schoolRows.forEach(({ s, x: r }) => {
+      Object.keys(sub).forEach(k => { sub[k] += s.total[k]; });
+      const ref = col => yeFCell(`${col}${r}`, `${yeSheetRef(s.name)}!${col}${spec.totalRow}`, s.total[KEYS[col]], 4);
+      rowsXml.push(yeRowXml(r, [
+        yeSCell(`A${r}`, s.name, 3), ref('B'), ref('C'), ref('D'),
+        yeFCell(`E${r}`, `C${r}+D${r}`, s.total.bought + s.total.donated, 4), ref('F'),
+        yeFCell(`G${r}`, `B${r}+E${r}-F${r}`, s.total.end, 4), pct(r, s.total.end, 5),
+      ], 20));
+    });
+    const r = p.subRow;
+    const sum = (col, v) => yeFCell(`${col}${r}`, `SUM(${col}${p.first}:${col}${p.last})`, v, 7);
+    rowsXml.push(yeRowXml(r, [
+      yeSCell(`A${r}`, p.g.label, 6), sum('B', sub.prev), sum('C', sub.bought), sum('D', sub.donated),
+      sum('E', sub.bought + sub.donated), sum('F', sub.withdrawn), sum('G', sub.end), pct(r, sub.end, 8),
+    ], 22));
+  });
+  const all = (col, v) => yeFCell(`${col}${GRAND}`, plan.map(p => `${col}${p.subRow}`).join('+'), v, 7);
+  rowsXml.push(yeRowXml(GRAND, [
+    yeSCell(`A${GRAND}`, '町全体 合計', 6), all('B', grand.prev), all('C', grand.bought), all('D', grand.donated),
+    all('E', grand.bought + grand.donated), all('F', grand.withdrawn), all('G', grand.end), pct(GRAND, grand.end, 8),
+  ], 24));
+
+  const NOTE = GRAND + 2;
+  spec.notes.forEach((t, i) => rowsXml.push(yeRowXml(NOTE + i, [yeSCell(`A${NOTE + i}`, t, 9)])));
+  return { name: spec.name, sheetXml: yeWrapSheet(rowsXml, NOTE + spec.notes.length - 1, false, 22) };
+}
+
+// シートの配列（yeCategorySheet / yeSchoolListSheet の戻り値）から xlsx のバイト列を作る
+function yeBuildWorkbook(sheets) {
+  const X = YE_X;
+  const font = (sz, bold, color) => `<font>${bold ? '<b/>' : ''}<sz val="${sz}"/><color rgb="${color || 'FF000000'}"/><name val="游ゴシック"/><family val="3"/><charset val="128"/></font>`;
+  const fill = rgb => `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/><bgColor indexed="64"/></patternFill></fill>`;
+  const side = t => `<${t} style="thin"><color rgb="FF808080"/></${t}>`;
+  const xf = (numFmt, fontId, fillId, borderId, align) =>
+    `<xf numFmtId="${numFmt}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">${align || '<alignment vertical="center"/>'}</xf>`;
+  const stylesXml = X +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0"/><numFmt numFmtId="165" formatCode="0.0%"/></numFmts>' +
+    `<fonts count="4">${font(11, false)}${font(11, true)}${font(15, true)}${font(9, false, 'FF595959')}</fonts>` +
+    `<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fill('FFDCE6F1')}${fill('FFF2F2F2')}</fills>` +
+    `<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border>${side('left')}${side('right')}${side('top')}${side('bottom')}<diagonal/></border></borders>` +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="10">' +
+    xf(0, 0, 0, 0) +                                                                        // 0 標準
+    xf(0, 2, 0, 0) +                                                                        // 1 タイトル
+    xf(0, 1, 2, 1, '<alignment horizontal="center" vertical="center" wrapText="1"/>') +     // 2 見出し
+    xf(0, 0, 0, 1) +                                                                        // 3 分類名・学校名
+    xf(164, 0, 0, 1) +                                                                      // 4 冊数
+    xf(165, 0, 0, 1) +                                                                      // 5 構成比
+    xf(0, 1, 3, 1, '<alignment horizontal="center" vertical="center"/>') +                  // 6 合計（見出し）
+    xf(164, 1, 3, 1) +                                                                      // 7 合計（冊数）
+    xf(165, 1, 3, 1) +                                                                      // 8 合計（構成比）
+    xf(0, 3, 0, 0) +                                                                        // 9 注記
+    '</cellXfs>' +
+    '<cellStyles count="1"><cellStyle name="標準" xfId="0" builtinId="0"/></cellStyles>' +
+    '</styleSheet>';
+
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const PKG = 'http://schemas.openxmlformats.org/package/2006/relationships';
+  const rels = items => X + `<Relationships xmlns="${PKG}">` + items.map(([id, type, target]) => `<Relationship Id="${id}" Type="${REL}/${type}" Target="${target}"/>`).join('') + '</Relationships>';
+
+  const files = [];
+  let types = '';
+  const wbSheets = [], wbRels = [];
+  let chartNo = 0;
+  sheets.forEach((sh, i) => {
+    const no = i + 1;
+    types += `<Override PartName="/xl/worksheets/sheet${no}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+    wbSheets.push(`<sheet name="${yeXmlEsc(sh.name)}" sheetId="${no}" r:id="rId${no}"/>`);
+    wbRels.push([`rId${no}`, 'worksheet', `worksheets/sheet${no}.xml`]);
+    files.push({ name: `xl/worksheets/sheet${no}.xml`, text: sh.sheetXml });
+    if (sh.chartXml) {
+      chartNo++;
+      types += `<Override PartName="/xl/drawings/drawing${chartNo}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` +
+               `<Override PartName="/xl/charts/chart${chartNo}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`;
+      files.push({ name: `xl/worksheets/_rels/sheet${no}.xml.rels`, text: rels([['rId1', 'drawing', `../drawings/drawing${chartNo}.xml`]]) });
+      files.push({ name: `xl/drawings/drawing${chartNo}.xml`, text: sh.drawingXml });
+      files.push({ name: `xl/drawings/_rels/drawing${chartNo}.xml.rels`, text: rels([['rId1', 'chart', `../charts/chart${chartNo}.xml`]]) });
+      files.push({ name: `xl/charts/chart${chartNo}.xml`, text: sh.chartXml });
+    }
+  });
+  wbRels.push([`rId${sheets.length + 1}`, 'styles', 'styles.xml']);
+
+  return yeZipStore([
+    { name: '[Content_Types].xml', text: X +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      types + '</Types>' },
+    { name: '_rels/.rels', text: rels([['rId1', 'officeDocument', 'xl/workbook.xml']]) },
+    { name: 'xl/workbook.xml', text: X +
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${REL}">` +
+      '<bookViews><workbookView/></bookViews>' +
+      `<sheets>${wbSheets.join('')}</sheets>` +
+      '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>' },
+    { name: 'xl/_rels/workbook.xml.rels', text: rels(wbRels) },
+    { name: 'xl/styles.xml', text: stylesXml },
+  ].concat(files));
+}
+
+// 見出し・注記に使う共通の文言
+function yeLabels(meta) {
+  const fyLabel = yeFiscalLabel(meta.fy);
+  const endDate = meta.fy + 1 >= 2019 ? `令和${meta.fy + 1 - 2018}年3月31日` : `${meta.fy + 1}年3月31日`;
+  return {
+    fyLabel,
+    endLabel: meta.isFinal ? '年度末冊数' : '現在冊数',
+    subtitle: meta.isFinal
+      ? `${endDate}現在　／　出力日：${meta.todayStr}`
+      : `${meta.todayStr}現在（年度の途中のため、年度末までの受入・除籍で変わります）`,
+  };
+}
+
+function yeUnknownNote(info, meta, fyLabel) {
+  return meta.useRegisteredAt
+    ? `・購入年度も納品日も空欄の本は ${info.unknownAcq.toLocaleString()}冊。このうち登録日が${fyLabel}の ${info.unknownAcqRegisteredThisFy.toLocaleString()}冊は「受入」に、残りは「前年度末冊数」に数えています`
+    : `・購入年度も納品日も空欄の本 ${info.unknownAcq.toLocaleString()}冊は、以前からの蔵書として「前年度末冊数」に数えています（うち、システムへの登録日が${fyLabel}の本：${info.unknownAcqRegisteredThisFy.toLocaleString()}冊）`;
+}
+
+// 1校分の分類別シートの仕様を作る
+function yeSchoolSheetSpec(agg, rows, meta, sheetName, schoolName, inTownBook) {
+  const L = yeLabels(meta);
+  const notes = [
+    '【この表について】',
+    `・数え方：登録番号ごとに1冊（システムの「総冊数」と同じ）。${L.endLabel} ＝ 前年度末冊数 ＋ 受入 計 − 除籍`,
+    '・B〜D列・F列の数字を書き換えると、受入 計・' + L.endLabel + '・合計・構成比・円グラフが自動で変わります（前年度の報告値に合わせたいときなど）' +
+      (inTownBook ? '。「町全体」「学校別」などのシートにも反映されます' : ''),
+    `・受入：購入年度（空欄のときは納品日）が${L.fyLabel}の本。　除籍：除籍年度が${L.fyLabel}の本`,
+    yeUnknownNote(agg.info, meta, L.fyLabel),
+  ];
+  if (agg.info.unknownWithdrawYear) notes.push(`・除籍年度が記録されていない除籍本 ${agg.info.unknownWithdrawYear.toLocaleString()}冊は、以前に除籍したものとして集計から除いています`);
+  return {
+    name: sheetName, title: `${schoolName}　${L.fyLabel}　蔵書冊数集計表`, subtitle: L.subtitle,
+    endLabel: L.endLabel, rows, total: agg.total, notes,
+  };
+}
+
+// 1校分のブック（fix27）
+// meta: { schoolName, fy, todayStr, isFinal, useRegisteredAt }
+function yeBuildXlsx(agg, meta) {
+  return yeBuildWorkbook([yeCategorySheet(yeSchoolSheetSpec(agg, agg.rows, meta, '蔵書冊数集計', meta.schoolName, false))]);
+}
+
+// 町全体のブック（fix28）
+// schoolAggs: [{ cd, name, agg }]（SCHOOLS の順）
+function yeBuildTownXlsx(schoolAggs, meta) {
+  const L = yeLabels(meta);
+  const catList = yeOrderCats([].concat(...schoolAggs.map(s => s.agg.rows.map(r => r.cat))));
+  const TOTAL_ROW = 5 + catList.length;
+  const elem = schoolAggs.filter(s => ELEM_CDS.includes(s.cd));
+  const jhs  = schoolAggs.filter(s => !ELEM_CDS.includes(s.cd));
+
+  const sumSheet = (name, titleHead, list, chartPrefix) => {
+    const agg = yeSumAggs(list.map(s => s.agg), catList);
+    const notes = [
+      '【この表について】',
+      `・${list.length}校の各シートを合計した表です（数字を直すときは、各学校のシートを直すとここにも反映されます）`,
+      `・数え方：登録番号ごとに1冊。${L.endLabel} ＝ 前年度末冊数 ＋ 受入 計 − 除籍`,
+      `・受入：購入年度（空欄のときは納品日）が${L.fyLabel}の本。　除籍：除籍年度が${L.fyLabel}の本`,
+      yeUnknownNote(agg.info, meta, L.fyLabel),
+    ];
+    if (agg.info.unknownWithdrawYear) notes.push(`・除籍年度が記録されていない除籍本 ${agg.info.unknownWithdrawYear.toLocaleString()}冊は、以前に除籍したものとして集計から除いています`);
+    return {
+      spec: { name, title: `${titleHead}　${L.fyLabel}　蔵書冊数集計表`, subtitle: L.subtitle, endLabel: L.endLabel,
+              rows: agg.rows, total: agg.total, notes, sumSheets: list.map(s => s.name), chartPrefix },
+      agg,
+    };
+  };
+
+  const town = sumSheet('町全体', `愛川町立小・中学校（${schoolAggs.length}校）`, schoolAggs, '町全体　');
+  const sheets = [yeCategorySheet(town.spec)];
+  if (elem.length) sheets.push(yeCategorySheet(sumSheet('小学校計', `小学校（${elem.length}校）`, elem, '小学校　').spec));
+  if (jhs.length)  sheets.push(yeCategorySheet(sumSheet('中学校計', `中学校（${jhs.length}校）`, jhs, '中学校　').spec));
+
+  const groups = [];
+  if (elem.length) groups.push({ label: '小学校 計', schools: elem.map(s => ({ name: s.name, total: s.agg.total })) });
+  if (jhs.length)  groups.push({ label: '中学校 計', schools: jhs.map(s => ({ name: s.name, total: s.agg.total })) });
+  sheets.push(yeSchoolListSheet({
+    name: '学校別', title: `愛川町立小・中学校　${L.fyLabel}　学校別 蔵書冊数集計表`, subtitle: L.subtitle,
+    endLabel: L.endLabel, groups, totalRow: TOTAL_ROW,
+    notes: [
+      '【この表について】',
+      '・各学校の数字は、それぞれの学校のシートの合計行を参照しています（数字を直すときは、各学校のシートを直してください）',
+      `・数え方：登録番号ごとに1冊。${L.endLabel} ＝ 前年度末冊数 ＋ 受入 計 − 除籍`,
+    ],
+  }));
+
+  schoolAggs.forEach(s => {
+    sheets.push(yeCategorySheet(yeSchoolSheetSpec(s.agg, yeAlignRows(s.agg, catList), meta, s.name, s.name, true)));
+  });
+  return { bytes: yeBuildWorkbook(sheets), town: town.agg };
+}
+
+// ---- 画面側 ----
+// mode：'school'（統計タブ・いま見ている学校） / 'town'（管理者ダッシュボード・9校まとめて）
+function openYearEndModal(mode) {
+  window._yeMode = (mode === 'town' && loginSchoolCd === 'admin') ? 'town' : 'school';
+  const isTown = window._yeMode === 'town';
+  const fy = getCurrentFiscalYear();
+  const sel = document.getElementById('yeYear');
+  sel.innerHTML = '';
+  for (let y = fy; y >= fy - 5; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = `${yeFiscalLabel(y)}（${y}年4月〜${y + 1}年3月）`;
+    sel.appendChild(opt);
+  }
+  document.getElementById('yeModalTitle').textContent = isTown ? '📊 年度末の蔵書冊数集計（町全体）' : '📊 年度末の蔵書冊数集計';
+  document.getElementById('yeModalDesc').textContent = isTown
+    ? '9校分の「前年度末の冊数 ＋ 受入 − 除籍 ＝ 年度末の冊数」を1つのExcelにまとめます。シートは「町全体」「小学校計」「中学校計」「学校別」と各学校（分類別の表と円グラフ）です。全校のデータを読むため、1〜2分かかることがあります。'
+    : '「前年度末の冊数 ＋ 受入 − 除籍 ＝ 年度末の冊数」を分類ごとにまとめ、円グラフ付きのExcel（1シート）で出力します。';
+  document.getElementById('yeUseRegistered').checked = false;
+  document.getElementById('yeResult').innerHTML = '';
+  openModal('yearEndModal');
+}
+
+// 1校分の蔵書レコード（除籍済みも含む）を1,000件ずつ全部取得する
+async function yeFetchBooks(schoolCd, onProgress) {
+  let books = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.from('books')
+      .select('category, status, purchase_fiscal_year, delivery_date, registered_at, is_donated, withdrawn_fiscal_year, withdrawn_at')
+      .eq('school_cd', schoolCd)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    books = books.concat(data);
+    if (onProgress) onProgress(books.length);
+    if (data.length < PAGE) break;
+  }
+  return books;
+}
+
+function yeDownload(bytes, filename) {
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+async function exportYearEndExcel() {
+  const btn = document.getElementById('yeExportBtn');
+  const out = document.getElementById('yeResult');
+  const fy = parseInt(document.getElementById('yeYear').value);
+  const useRegisteredAt = document.getElementById('yeUseRegistered').checked;
+  const isTown = window._yeMode === 'town';
+  const schoolCd = currentSchoolCd;
+  if (!isTown && (!schoolCd || schoolCd === 'all' || schoolCd === 'admin')) { alert('学校を選んでから実行してください'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ 集計中…';
+  out.innerHTML = '';
+  try {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+    const isFinal = now >= new Date(fy + 1, 3, 1);   // 翌年度の4月1日以降なら確定値
+    let total, info, label, extra = '';
+
+    if (isTown) {
+      // 9校を1校ずつ順番に読む（同時に読むと通信が詰まりやすいため）
+      const schoolAggs = [];
+      for (let i = 0; i < SCHOOLS.length; i++) {
+        const sc = SCHOOLS[i];
+        const books = await yeFetchBooks(sc.cd, n => {
+          btn.textContent = `⏳ ${sc.name}（${i + 1}/${SCHOOLS.length}校目）… ${n.toLocaleString()}件`;
+        });
+        schoolAggs.push({ cd: sc.cd, name: sc.name, agg: yeAggregate(books, fy, { useRegisteredAt }) });
+      }
+      const empty = schoolAggs.filter(s => s.agg.rows.length === 0).map(s => s.name);
+      if (empty.length === schoolAggs.length) {
+        out.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">この年度に該当する蔵書データがありません</div>';
+        return;
+      }
+      const res = yeBuildTownXlsx(schoolAggs, { fy, todayStr, isFinal, useRegisteredAt });
+      yeDownload(res.bytes, `蔵書冊数集計_愛川町全体_${yeFiscalLabel(fy)}.xlsx`);
+      total = res.town.total; info = res.town.info; label = '町全体（9校）';
+      if (empty.length) extra = `<div style="font-size:12px;color:var(--orange);margin-top:8px;line-height:1.6;">⚠️ データが0件だった学校：${adminEsc(empty.join('・'))}（読み取り権限か学校コードを確認してください）</div>`;
+    } else {
+      const books = await yeFetchBooks(schoolCd, n => { btn.textContent = `⏳ 集計中… ${n.toLocaleString()}件`; });
+      const agg = yeAggregate(books, fy, { useRegisteredAt });
+      if (agg.rows.length === 0) {
+        out.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">この年度に該当する蔵書データがありません</div>';
+        return;
+      }
+      const schoolName = (document.querySelector('#screen-stats .topbar-school')?.textContent || '').trim() || schoolCd;
+      yeDownload(yeBuildXlsx(agg, { schoolName, fy, todayStr, isFinal, useRegisteredAt }), `蔵書冊数集計_${schoolName}_${yeFiscalLabel(fy)}.xlsx`);
+      total = agg.total; info = agg.info; label = schoolName;
+    }
+
+    const cell = (lbl, v, color) => `<div style="flex:1;min-width:90px;background:var(--bg3);border-radius:8px;padding:8px 10px;">
+        <div style="font-size:11px;color:var(--text3);">${lbl}</div>
+        <div style="font-size:16px;font-weight:700;color:${color || 'var(--text1)'};font-family:'JetBrains Mono',monospace;">${v.toLocaleString()}</div></div>`;
+    out.innerHTML = `
+      <div style="font-size:12px;color:var(--text2);margin:12px 0 6px;">✅ ${adminEsc(label)}　${adminEsc(yeFiscalLabel(fy))}の集計表を出力しました（単位：冊）</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${cell('前年度末', total.prev)}${cell('受入', total.bought + total.donated, 'var(--green)')}${cell('除籍', total.withdrawn, 'var(--orange)')}${cell(isFinal ? '年度末' : '現在', total.end)}
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6;">
+        購入年度も納品日も空欄の本：${info.unknownAcq.toLocaleString()}冊（うち登録日がこの年度：${info.unknownAcqRegisteredThisFy.toLocaleString()}冊）
+      </div>${extra}`;
+  } catch (err) {
+    console.error('年度末集計の出力失敗:', err);
+    out.innerHTML = `<div style="color:var(--red);font-size:13px;padding:8px 0;">出力に失敗しました：${adminEsc((err && err.message) || String(err))}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📊 Excelに出力';
+  }
 }
 
 // ============================================================
