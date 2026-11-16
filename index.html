@@ -1061,6 +1061,62 @@ html, body {
 }
 .seg-btn.active { background: var(--bg5); color: var(--text); }
 
+/* ===== fix30：バーコード印刷画面 ===== */
+.bp-heading { font-size: 20px; font-weight: 700; margin-bottom: 14px; line-height: 1.4; }
+.bp-choice {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 92px;
+  padding: 14px 16px; margin-bottom: 12px; border-radius: 20px;
+  background: var(--bg3); border: 2px solid var(--border2); color: var(--text);
+  text-align: left; cursor: pointer; font-family: 'Noto Sans JP', sans-serif;
+  transition: transform 0.1s;
+}
+.bp-choice:active { transform: scale(0.98); }
+.bp-choice-icon {
+  width: 60px; height: 60px; border-radius: 18px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 30px;
+}
+.bp-choice-text { flex: 1; min-width: 0; }
+.bp-choice-title { font-size: 18px; font-weight: 700; }
+.bp-choice-desc { font-size: 13px; color: var(--text2); line-height: 1.5; margin-top: 3px; }
+.bp-choice-arrow { color: var(--text3); font-size: 22px; flex-shrink: 0; }
+.bp-box { background: var(--bg3); border-radius: 18px; padding: 14px 16px; margin-bottom: 14px; }
+.bp-step { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.bp-hint { font-size: 12px; color: var(--text2); line-height: 1.6; }
+.bp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.bp-row-label { font-size: 15px; font-weight: 600; }
+.bp-num {
+  width: 100px; height: 52px; box-sizing: border-box; text-align: center;
+  font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+  border-radius: 14px; border: 2px solid var(--border2); background: var(--bg2); color: var(--text); outline: none;
+}
+.bp-num:focus { border-color: var(--blue); }
+.bp-step-btn {
+  width: 52px; height: 52px; border-radius: 26px; flex-shrink: 0;
+  border: 2px solid var(--border2); background: var(--bg2); color: var(--text);
+  font-size: 24px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.bp-step-btn:active { background: var(--bg4); }
+.bp-preview { font-size: 17px; font-weight: 700; color: var(--blue); font-family: 'JetBrains Mono', monospace; line-height: 1.5; }
+.bp-print {
+  width: 100%; min-height: 64px; border-radius: 32px; border: none;
+  background: var(--blue); color: #fff; font-size: 19px; font-weight: 700;
+  cursor: pointer; font-family: 'Noto Sans JP', sans-serif;
+}
+.bp-print:active { transform: scale(0.98); }
+.bp-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bp-seg button {
+  min-height: 76px; padding: 10px 12px; border-radius: 18px; text-align: left; cursor: pointer;
+  border: 2px solid var(--border2); background: var(--bg2); color: var(--text);
+  font-family: 'Noto Sans JP', sans-serif; font-size: 15px; font-weight: 700; line-height: 1.4;
+}
+.bp-seg button.active { border-color: var(--blue); background: var(--blue); color: #fff; }
+.bp-seg button span { display: block; font-size: 11px; font-weight: 500; margin-top: 3px; opacity: .85; }
+.bp-back {
+  height: 40px; padding: 0 14px; border-radius: 20px; border: 2px solid var(--border2);
+  background: var(--bg3); color: var(--text); font-size: 14px; font-weight: 700; cursor: pointer;
+  font-family: 'Noto Sans JP', sans-serif; margin-right: 10px;
+}
+
 /* ===== DIVIDER ===== */
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 </style>
@@ -1871,84 +1927,14 @@ html, body {
       </div>
     </div>
 
-    <!-- バーコード印刷 -->
+    <!-- バーコード印刷（fix30：専用画面を開く） -->
     <div class="card" style="margin-bottom:10px;">
-      <div onclick="toggleAccordion('acc-barcode')" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
-        <div style="font-weight:700;font-size:15px;">🏷️ バーコード印刷</div>
-        <div id="acc-barcode-icon" style="color:var(--text3);font-size:18px;">›</div>
-      </div>
-      <div id="acc-barcode" style="display:none;padding:0 16px 16px;">
-        <!-- fix25：読み取りテスト・形式切り替え -->
-        <div style="background:var(--bg3);border-radius:10px;padding:12px 14px;margin-bottom:16px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:6px;">🧪 バーコード読み取りテスト</div>
-          <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">リーダーで読める形式・太さを確認します。テスト用紙を1枚印刷し、そのままスキャンして結果を見てください。</div>
-          <button onclick="printBarcodeTestSheet()" style="width:100%;padding:11px;background:var(--blue);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;">🧪 テスト用紙を印刷</button>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;">
-            <span style="white-space:nowrap;">印刷する形式：</span>
-            <select id="barcodeFormatSelect" class="form-input" style="flex:1;" onchange="setBarcodeFormat(this.value)">
-              <option value="CODE128B">Code128（標準）</option>
-              <option value="CODE39">Code39（読み取りが安定しやすい）</option>
-            </select>
-          </div>
+      <div onclick="openBarcodePrintScreen()" style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div>
+          <div style="font-weight:700;font-size:15px;">🏷️ バーコード印刷</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px;">本のラベル・利用者カード・ログイン用・読み取りテスト</div>
         </div>
-        <div style="margin-bottom:16px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">👤 利用者カード連番印刷</div>
-          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">先頭のIDと枚数を指定して連番で印刷します。</div>
-          <div style="margin-bottom:10px;">
-            <label class="form-label">先頭のID</label>
-            <input class="form-input" type="text" id="userIdStart" placeholder="例：S25001" style="font-family:'JetBrains Mono',monospace;" oninput="updateUserCardPreview()" />
-          </div>
-          <div style="margin-bottom:10px;">
-            <label class="form-label">印刷枚数</label>
-            <input class="form-input" type="number" id="userIdCount" value="10" min="1" max="200" oninput="updateUserCardPreview()" />
-          </div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="userCardPreview">先頭のIDを入力してください</div>
-          <button onclick="printUserCardsSeq()" style="width:100%;padding:12px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;">🖨️ 利用者カードを印刷</button>
-        </div>
-          <div style="border-top:1px solid var(--border);padding-top:16px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📚 本の独自バーコード一括印刷</div>
-          <div style="font-size:13px;color:var(--text3);margin-bottom:12px;">開始番号と枚数を指定して連番バーコードを印刷します。印刷後に本に貼り、スキャンして登録してください。</div>
-
-          <!-- プレフィックス表示 -->
-          <div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-            <div style="font-size:13px;color:var(--text3);">プレフィックス：</div>
-            <div id="barcodePrefixLabel" style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--blue);">TAK</div>
-          </div>
-
-          <div class="form-row" style="margin-bottom:10px;">
-            <div class="form-group">
-              <label class="form-label">開始番号</label>
-              <input class="form-input" type="number" id="barcodeStartNum" value="1" min="1" style="font-family:'JetBrains Mono',monospace;" oninput="updateBarcodePreview()" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">印刷枚数</label>
-              <input class="form-input" type="number" id="barcodePrintCount" value="20" min="1" max="200" oninput="updateBarcodePreview()" />
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;" id="barcodePreview">TAK-00001 〜 TAK-00020（20枚）</div>
-          <button onclick="printBookBarcodesSeq()" style="width:100%;padding:12px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">🖨️ バーコードを印刷</button>
-
-          <div style="border-top:1px dashed var(--border);margin-top:14px;padding-top:12px;">
-            <div style="font-weight:700;font-size:13px;margin-bottom:6px;">🔗 登録済みの本のラベル発行（紐付き印刷）</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">ISBNのない本に独自バーコードを採番して印刷します。蔵書点検の「番号インポート」で確認された本も自動抽出できます。ラベルには登録番号・書名を併記します。</div>
-            <button onclick="openLinkedLabelModal()" style="width:100%;padding:12px;background:var(--blue);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;">🏷️ 対象の本を選んで印刷</button>
-          </div>
-        </div>
-
-        <!-- ログイン用バーコード -->
-        <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">🔑 ログイン用バーコード発行</div>
-          <div style="font-size:13px;color:var(--text3);margin-bottom:14px;">印刷したバーコードをスキャンするだけでログインできます。</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <button onclick="printLoginBarcode('teacher')" style="padding:12px 8px;background:var(--blue);border:none;border-radius:10px;color:white;font-weight:700;cursor:pointer;font-size:13px;">
-              🖨️ 先生用<br><span style="font-size:11px;font-weight:400;">ログインバーコード</span>
-            </button>
-            <button onclick="printLoginBarcode('student')" style="padding:12px 8px;background:var(--green);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;font-size:13px;">
-              🖨️ 図書委員用<br><span style="font-size:11px;font-weight:400;">ログインバーコード</span>
-            </button>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:10px;">※ パスワードを変更した場合は再発行が必要です</div>
-        </div>
+        <div style="color:var(--text3);font-size:18px;">›</div>
       </div>
     </div>
   </div>
@@ -2627,6 +2613,164 @@ html, body {
   </div>
 </div>
 
+<!-- fix30：バーコード印刷画面 -->
+<div class="modal-overlay" id="barcodePrintModal" onclick="closeModalOutside(event,'barcodePrintModal')">
+  <div class="modal-sheet" style="max-height:94vh;">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;min-width:0;">
+        <button class="bp-back" id="bpBackBtn" style="display:none;" onclick="bpShow('menu')">‹ 戻る</button>
+        <div class="modal-title" id="bpTitle">🏷️ バーコード印刷</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('barcodePrintModal')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- ① 何を印刷するか選ぶ -->
+      <div id="bpView-menu">
+        <div class="bp-heading">何を印刷しますか？</div>
+        <button class="bp-choice" onclick="bpShow('label')">
+          <span class="bp-choice-icon" style="background:var(--blue-dim);">📚</span>
+          <span class="bp-choice-text">
+            <span class="bp-choice-title">本に貼るラベル</span><br>
+            <span class="bp-choice-desc">ISBNのない本・新しい本に貼るバーコード</span>
+          </span>
+          <span class="bp-choice-arrow">›</span>
+        </button>
+        <button class="bp-choice" onclick="bpShow('user')">
+          <span class="bp-choice-icon" style="background:var(--yellow-dim);">👤</span>
+          <span class="bp-choice-text">
+            <span class="bp-choice-title">利用者カード</span><br>
+            <span class="bp-choice-desc">児童生徒が本を借りるときのカード</span>
+          </span>
+          <span class="bp-choice-arrow">›</span>
+        </button>
+        <button class="bp-choice" onclick="bpShow('login')">
+          <span class="bp-choice-icon" style="background:var(--green-dim);">🔑</span>
+          <span class="bp-choice-text">
+            <span class="bp-choice-title">ログイン用バーコード</span><br>
+            <span class="bp-choice-desc">先生用・図書委員用（パスワード変更後は作り直し）</span>
+          </span>
+          <span class="bp-choice-arrow">›</span>
+        </button>
+        <div class="bp-box" style="border:2px solid var(--yellow);background:var(--yellow-dim);margin-top:18px;margin-bottom:0;">
+          <div class="bp-step">🧪 最初に：読み取りテスト</div>
+          <div class="bp-hint" style="margin-bottom:12px;">たくさん印刷する前に、テスト用紙を1枚印刷して、リーダーで読めるか確かめます。</div>
+          <button class="bp-print" style="min-height:52px;font-size:16px;background:var(--bg2);color:var(--text);border:2px solid var(--border2);" onclick="bpShow('test')">読み取りテストへ進む ›</button>
+        </div>
+      </div>
+
+      <!-- ② 本に貼るラベル -->
+      <div id="bpView-label" style="display:none;">
+        <div class="bp-step">1. どの本のラベルですか？</div>
+        <div class="bp-seg" style="margin-bottom:16px;">
+          <button class="active">新しい番号で作る<span>印刷して貼ってから登録</span></button>
+          <button onclick="closeModal('barcodePrintModal');openLinkedLabelModal();">登録済みの本を選ぶ ›<span>登録番号・書名つきで印刷</span></button>
+        </div>
+        <div class="bp-box">
+          <div class="bp-step">2. 番号と枚数</div>
+          <div class="bp-row">
+            <label class="bp-row-label" for="barcodeStartNum">開始番号</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span id="barcodePrefixLabel" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--blue);">TAK</span>
+              <span style="font-weight:700;color:var(--blue);">-</span>
+              <input class="bp-num" type="number" id="barcodeStartNum" value="1" min="1" oninput="bpRefresh()" />
+            </div>
+          </div>
+          <div class="bp-hint" style="margin:-4px 0 12px;text-align:right;">前回の続きの番号が自動で入ります</div>
+          <div class="bp-row" style="margin-bottom:0;">
+            <label class="bp-row-label" for="barcodePrintCount">枚数</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button class="bp-step-btn" aria-label="枚数を減らす" onclick="bpStepCount('barcodePrintCount',-1)">−</button>
+              <input class="bp-num" style="width:80px;" type="number" id="barcodePrintCount" value="20" min="1" max="200" oninput="bpRefresh()" />
+              <button class="bp-step-btn" aria-label="枚数を増やす" onclick="bpStepCount('barcodePrintCount',1)">＋</button>
+            </div>
+          </div>
+        </div>
+        <div class="bp-box">
+          <div class="bp-step">3. 仕上がりの確認</div>
+          <div class="bp-preview" id="barcodePreview">TAK-00001 〜 TAK-00020（20枚）</div>
+          <div class="bp-hint" style="margin-top:8px;">印刷したら本に貼り、ホームの「登録」でスキャンして登録します。印刷は「実際のサイズ（100%）」で行ってください。</div>
+        </div>
+        <button class="bp-print" id="bpLabelPrintBtn" onclick="printBookBarcodesSeq()">🖨️ 20枚を印刷する</button>
+      </div>
+
+      <!-- ③ 利用者カード -->
+      <div id="bpView-user" style="display:none;">
+        <div class="bp-box">
+          <div class="bp-step">1. 先頭のID</div>
+          <input class="form-input" type="text" id="userIdStart" placeholder="例：S25001" style="font-family:'JetBrains Mono',monospace;font-size:18px;height:52px;" oninput="bpRefresh()" />
+          <div class="bp-hint" style="margin-top:8px;">末尾の数字が1ずつ増える連番で作ります（S25001、S25002、…）。</div>
+        </div>
+        <div class="bp-box">
+          <div class="bp-step">2. 枚数</div>
+          <div class="bp-row" style="margin-bottom:0;">
+            <label class="bp-row-label" for="userIdCount">印刷する枚数</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button class="bp-step-btn" aria-label="枚数を減らす" onclick="bpStepCount('userIdCount',-1)">−</button>
+              <input class="bp-num" style="width:80px;" type="number" id="userIdCount" value="10" min="1" max="200" oninput="bpRefresh()" />
+              <button class="bp-step-btn" aria-label="枚数を増やす" onclick="bpStepCount('userIdCount',1)">＋</button>
+            </div>
+          </div>
+        </div>
+        <div class="bp-box">
+          <div class="bp-step">3. 仕上がりの確認</div>
+          <div class="bp-preview" id="userCardPreview">先頭のIDを入力してください</div>
+        </div>
+        <button class="bp-print" id="bpUserPrintBtn" onclick="printUserCardsSeq()">🖨️ 10枚を印刷する</button>
+      </div>
+
+      <!-- ④ ログイン用バーコード -->
+      <div id="bpView-login" style="display:none;">
+        <div class="bp-heading">だれ用のバーコードですか？</div>
+        <button class="bp-choice" onclick="printLoginBarcode('teacher')">
+          <span class="bp-choice-icon" style="background:var(--blue-dim);">👩‍🏫</span>
+          <span class="bp-choice-text">
+            <span class="bp-choice-title">先生・図書館員用</span><br>
+            <span class="bp-choice-desc">すべての機能が使えるログイン</span>
+          </span>
+          <span class="bp-choice-arrow">🖨️</span>
+        </button>
+        <button class="bp-choice" onclick="printLoginBarcode('student')">
+          <span class="bp-choice-icon" style="background:var(--green-dim);">📚</span>
+          <span class="bp-choice-text">
+            <span class="bp-choice-title">図書委員用</span><br>
+            <span class="bp-choice-desc">貸出・返却だけが使えるログイン</span>
+          </span>
+          <span class="bp-choice-arrow">🖨️</span>
+        </button>
+        <div class="bp-hint" style="margin-top:6px;">
+          ・印刷したバーコードをログイン画面の「バーコードでログイン」で読み取ります。<br>
+          ・パスワードを変更した場合は、作り直しが必要です。<br>
+          ・配る前に、読み取りテストでリーダーが読めることを確かめてください。
+        </div>
+      </div>
+
+      <!-- ⑤ 読み取りテスト -->
+      <div id="bpView-test" style="display:none;">
+        <div class="bp-box">
+          <div class="bp-step">1. テスト用紙を印刷する</div>
+          <div class="bp-hint" style="margin-bottom:12px;">形式や太さのちがうバーコードが1枚に並んだ用紙です。「実際のサイズ（100%）」で印刷してください。</div>
+          <button class="bp-print" onclick="printBarcodeTestSheet()">🧪 テスト用紙を印刷する</button>
+        </div>
+        <div class="bp-box">
+          <div class="bp-step">2. リーダーで読んでみる</div>
+          <div class="bp-hint">用紙のバーコードを1つずつ読み取り、用紙に書いてある文字と同じものが出るか確かめます。</div>
+        </div>
+        <div class="bp-box" style="margin-bottom:0;">
+          <div class="bp-step">3. 読めた形式を選ぶ</div>
+          <select id="barcodeFormatSelect" class="form-input" style="height:52px;font-size:15px;" onchange="setBarcodeFormat(this.value)">
+            <option value="CODE128B">Code128（標準）</option>
+            <option value="CODE39">Code39（読み取りが安定しやすい）</option>
+          </select>
+          <div class="bp-hint" style="margin-top:8px;">ここで選んだ形式が、これから印刷するすべてのバーコードに使われます。</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- 本を追加モーダル -->
 <div class="modal-overlay" id="addBookModal" onclick="closeModalOutside(event,'addBookModal')">
   <div class="modal-sheet">
@@ -2744,7 +2888,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-16-fix29（ログイン画面：メール・パスワード入力を最初から表示、バーコードログインは折りたたみへ）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-16-fix30（バーコード印刷画面を作り直し：「何を印刷しますか？」から選ぶ形式・大きなボタン）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -3790,6 +3934,55 @@ async function printUserCards() {
   openPrintWindow(ids, '利用者カード', 'user');
 }
 
+// ---- fix30：バーコード印刷画面（メニュー → 種類ごとの画面） ----
+const BP_TITLES = {
+  menu: '🏷️ バーコード印刷', label: '📚 本に貼るラベル', user: '👤 利用者カード',
+  login: '🔑 ログイン用バーコード', test: '🧪 読み取りテスト',
+};
+
+function openBarcodePrintScreen() {
+  const label = document.getElementById('barcodePrefixLabel');
+  if (label) label.textContent = getSchoolAbbr(currentSchoolCd);
+  const fmtSel = document.getElementById('barcodeFormatSelect');
+  if (fmtSel) fmtSel.value = getBarcodeFormat();
+  bpShow('menu');
+  openModal('barcodePrintModal');
+  autoSetBarcodeStartNum().then(bpRefresh).catch(() => {});   // 開始番号は前回の続きを自動で入れる
+}
+
+function bpShow(view) {
+  Object.keys(BP_TITLES).forEach(v => {
+    const el = document.getElementById('bpView-' + v);
+    if (el) el.style.display = (v === view) ? '' : 'none';
+  });
+  document.getElementById('bpTitle').textContent = BP_TITLES[view] || BP_TITLES.menu;
+  document.getElementById('bpBackBtn').style.display = (view === 'menu') ? 'none' : '';
+  const sheet = document.querySelector('#barcodePrintModal .modal-sheet');
+  if (sheet) sheet.scrollTop = 0;
+  bpRefresh();
+}
+
+// 枚数の −／＋ ボタン（1〜200枚）
+function bpStepCount(id, delta) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const cur = parseInt(el.value) || 0;
+  el.value = Math.max(1, Math.min(200, cur + delta));
+  bpRefresh();
+}
+
+// 仕上がり表示と印刷ボタンの枚数を更新
+function bpRefresh() {
+  updateBarcodePreview();
+  updateUserCardPreview();
+  const n1 = Math.min(parseInt(document.getElementById('barcodePrintCount')?.value) || 20, 200);
+  const n2 = Math.min(parseInt(document.getElementById('userIdCount')?.value) || 10, 200);
+  const b1 = document.getElementById('bpLabelPrintBtn');
+  const b2 = document.getElementById('bpUserPrintBtn');
+  if (b1) b1.textContent = `🖨️ ${n1}枚を印刷する`;
+  if (b2) b2.textContent = `🖨️ ${n2}枚を印刷する`;
+}
+
 // バーコード開始番号を自動設定（既存の最大番号+1）
 async function autoSetBarcodeStartNum() {
   const abbr = getSchoolAbbr(currentSchoolCd);  // 修正：'AIK-%'固定だったのを学校ごとの略称に
@@ -3844,7 +4037,7 @@ function updateBarcodePreview() {
   const startNum = parseInt(document.getElementById('barcodeStartNum')?.value) || 1;
   const count = Math.min(parseInt(document.getElementById('barcodePrintCount')?.value) || 20, 200);
   const endNum = startNum + count - 1;
-  const abbr = getSchoolAbbr(loginSchoolCd);
+  const abbr = getSchoolAbbr(currentSchoolCd);   // fix30：印刷時（currentSchoolCd）と同じ略称で表示
   const preview = document.getElementById('barcodePreview');
   if (preview) {
     const start = abbr + '-' + String(startNum).padStart(5, '0');
