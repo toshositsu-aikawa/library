@@ -1075,68 +1075,67 @@ html, body {
       <h1>愛川町学校図書館管理システム</h1>
     </div>
 
-    <!-- バーコードスキャンログイン（メイン） -->
-    <div style="margin-bottom:8px;">
-      <div style="font-size:13px;color:#8b90a8;margin-bottom:10px;text-align:center;">🔑 ログインバーコードをスキャン</div>
-      <input type="text" id="loginBarcodeInput"
-        placeholder="バーコードをスキャン…"
-        autocomplete="off"
-        inputmode="none"
-        lang="en"
-        style="width:100%;padding:14px;border-radius:12px;border:2px solid #3b82f6;background:#1e2235;color:#dde1ee;font-size:15px;box-sizing:border-box;text-align:center;outline:none;ime-mode:disabled;"
-        oninput="handleLoginBarcodeScan(this.value)" />
+    <!-- fix29：メール・パスワードでのログインを最初から表示（バーコードは下の折りたたみへ） -->
+    <div id="manualLoginArea">
+      <!-- モード切り替えタブ -->
+      <div style="display:flex;gap:0;margin-bottom:18px;border-radius:12px;overflow:hidden;border:1.5px solid #3a3f5c;">
+        <button id="loginTabTeacher" onclick="switchLoginTab('teacher')"
+          style="flex:1;padding:14px 8px;border:none;background:#3b82f6;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">
+          👩‍🏫 先生・図書館員
+        </button>
+        <button id="loginTabStudent" onclick="switchLoginTab('student')"
+          style="flex:1;padding:14px 8px;border:none;background:#1e2235;color:#8b90a8;font-size:15px;font-weight:700;cursor:pointer;">
+          📚 図書委員
+        </button>
+      </div>
+
+      <!-- 先生用ログインフォーム -->
+      <div id="loginFormTeacher">
+        <div class="login-field">
+          <label>メールアドレス</label>
+          <input type="email" id="loginEmail" placeholder="takamine@aikawa-lib.jp" autocomplete="email" />
+        </div>
+        <div class="login-field">
+          <label>パスワード</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <button class="login-btn" id="loginBtn" onclick="doLogin()" style="padding:16px;font-size:1.05em;">ログイン</button>
+      </div>
+
+      <!-- 図書委員用ログインフォーム -->
+      <div id="loginFormStudent" style="display:none;">
+        <div class="login-field">
+          <label>学校コード</label>
+          <input type="text" id="studentSchoolCd" placeholder="例：50301" inputmode="numeric" maxlength="5" />
+        </div>
+        <div class="login-field">
+          <label>図書委員パスワード</label>
+          <input type="password" id="studentPassword" placeholder="••••••••" />
+        </div>
+        <button class="login-btn" id="studentLoginBtn" onclick="doStudentLogin()"
+          style="padding:16px;font-size:1.05em;background:linear-gradient(135deg,#10b981,#059669);">
+          図書委員としてログイン
+        </button>
+      </div>
     </div>
     <div class="login-error" id="loginError" style="margin-bottom:8px;"></div>
 
-    <!-- 手動ログイン（折りたたみ） -->
-    <div style="margin-top:16px;">
-      <button onclick="toggleManualLogin()"
+    <!-- バーコードでログイン（折りたたみ。バーコードが読めるようになったら使う） -->
+    <div style="margin-top:18px;">
+      <button onclick="toggleBarcodeLogin()"
         style="width:100%;padding:10px;background:transparent;border:1px solid #3a3f5c;border-radius:10px;color:#8b90a8;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-        <span id="manualLoginToggleIcon">›</span>
-        <span>手動でログイン</span>
+        <span id="barcodeLoginToggleIcon">›</span>
+        <span>🔑 バーコードでログイン</span>
       </button>
-
-      <div id="manualLoginArea" style="display:none;margin-top:12px;">
-        <!-- モード切り替えタブ -->
-        <div style="display:flex;gap:0;margin-bottom:16px;border-radius:10px;overflow:hidden;border:1.5px solid #3a3f5c;">
-          <button id="loginTabTeacher" onclick="switchLoginTab('teacher')"
-            style="flex:1;padding:10px;border:none;background:#3b82f6;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
-            👩‍🏫 先生・図書館員
-          </button>
-          <button id="loginTabStudent" onclick="switchLoginTab('student')"
-            style="flex:1;padding:10px;border:none;background:#1e2235;color:#8b90a8;font-size:13px;font-weight:700;cursor:pointer;">
-            📚 図書委員
-          </button>
-        </div>
-
-        <!-- 先生用ログインフォーム -->
-        <div id="loginFormTeacher">
-          <div class="login-field">
-            <label>メールアドレス</label>
-            <input type="email" id="loginEmail" placeholder="takamine@aikawa-lib.jp" autocomplete="email" />
-          </div>
-          <div class="login-field">
-            <label>パスワード</label>
-            <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
-          </div>
-          <button class="login-btn" id="loginBtn" onclick="doLogin()">ログイン</button>
-        </div>
-
-        <!-- 図書委員用ログインフォーム -->
-        <div id="loginFormStudent" style="display:none;">
-          <div class="login-field">
-            <label>学校コード</label>
-            <input type="text" id="studentSchoolCd" placeholder="例：50301" inputmode="numeric" maxlength="5" />
-          </div>
-          <div class="login-field">
-            <label>図書委員パスワード</label>
-            <input type="password" id="studentPassword" placeholder="••••••••" />
-          </div>
-          <button class="login-btn" id="studentLoginBtn" onclick="doStudentLogin()"
-            style="background:linear-gradient(135deg,#10b981,#059669);">
-            図書委員としてログイン
-          </button>
-        </div>
+      <div id="barcodeLoginArea" style="display:none;margin-top:12px;">
+        <div style="font-size:13px;color:#8b90a8;margin-bottom:10px;text-align:center;">ログイン用バーコードをスキャンしてください</div>
+        <input type="text" id="loginBarcodeInput"
+          placeholder="バーコードをスキャン…"
+          autocomplete="off"
+          inputmode="none"
+          lang="en"
+          style="width:100%;padding:14px;border-radius:12px;border:2px solid #3b82f6;background:#1e2235;color:#dde1ee;font-size:15px;box-sizing:border-box;text-align:center;outline:none;ime-mode:disabled;"
+          oninput="handleLoginBarcodeScan(this.value)" />
       </div>
     </div>
 
@@ -2745,7 +2744,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-16-fix28（年度末 蔵書冊数集計：学校別＋管理者用の町全体版・分類別・円グラフ付きExcel出力）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-16-fix29（ログイン画面：メール・パスワード入力を最初から表示、バーコードログインは折りたたみへ）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -3004,16 +3003,14 @@ async function printLoginBarcode(type) {
 }
 
 // ===== ログインタブ切り替え =====
-function toggleManualLogin() {
-  const area = document.getElementById('manualLoginArea');
-  const icon = document.getElementById('manualLoginToggleIcon');
+// fix29：バーコードログイン欄の開閉（通常はメール・パスワード欄を表示）
+function toggleBarcodeLogin() {
+  const area = document.getElementById('barcodeLoginArea');
+  const icon = document.getElementById('barcodeLoginToggleIcon');
   const isOpen = area.style.display !== 'none';
   area.style.display = isOpen ? 'none' : '';
   icon.textContent = isOpen ? '›' : '⌄';
-  if (!isOpen) {
-    // 開いたらメールにフォーカス
-    setTimeout(() => document.getElementById('loginEmail')?.focus(), 50);
-  }
+  setTimeout(() => document.getElementById(isOpen ? 'loginEmail' : 'loginBarcodeInput')?.focus(), 50);
 }
 function switchLoginTab(tab) {
   const isTeacher = tab === 'teacher';
@@ -3173,7 +3170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ログイン画面ではバーコード入力欄に自動フォーカス
   const barcodeInput = document.getElementById('loginBarcodeInput');
   if (barcodeInput) {
-    barcodeInput.focus();
+    document.getElementById('loginEmail')?.focus();   // fix29：最初はメール欄にフォーカス
     // IMEをオフにする（日本語変換を防ぐ）
     barcodeInput.addEventListener('focus', () => {
       barcodeInput.setAttribute('lang', 'en');
@@ -5546,10 +5543,11 @@ async function doLogout() {
   document.getElementById('loginBtn').disabled = false;
   document.getElementById('loginBtn').textContent = 'ログイン';
   switchLoginTab('teacher');
-  const manualArea = document.getElementById('manualLoginArea');
-  const manualIcon = document.getElementById('manualLoginToggleIcon');
-  if (manualArea) manualArea.style.display = 'none';
-  if (manualIcon) manualIcon.textContent = '›';
+  // fix29：バーコード欄は閉じ、メール・パスワード欄を表示した状態に戻す
+  const barcodeArea = document.getElementById('barcodeLoginArea');
+  const barcodeIcon = document.getElementById('barcodeLoginToggleIcon');
+  if (barcodeArea) barcodeArea.style.display = 'none';
+  if (barcodeIcon) barcodeIcon.textContent = '›';
   ['tab-stats','tab-inv','tab-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = '';
@@ -5561,7 +5559,7 @@ async function doLogout() {
   loginSchoolCd = null;
   currentSchoolCd = null;
   hideAdminUI();   // fix23
-  setTimeout(() => document.getElementById('loginBarcodeInput')?.focus(), 100);
+  setTimeout(() => document.getElementById('loginEmail')?.focus(), 100);
 }
 
 // ===== 点検モード変数（TDZ対策：switchTabより前に宣言） =====
