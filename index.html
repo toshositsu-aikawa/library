@@ -1997,6 +1997,28 @@ body.student-mode .student-step {
         📊 年度末の蔵書冊数集計（Excel出力）
       </button>
 
+      <!-- fix34：学年別・ID別の貸出冊数 -->
+      <div class="section-header-row">
+        <div class="section-title-text">📒 学年別の貸出冊数</div>
+      </div>
+      <div class="card" style="margin-bottom:16px;padding:14px 16px;">
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+          <select class="form-select" id="lsYear" onchange="loadLendStats()" style="flex:1;"></select>
+          <button class="btn btn-ghost" style="white-space:nowrap;padding:10px 16px;" onclick="exportLendStatsExcel()">📊 Excel出力</button>
+        </div>
+        <div id="lsGradeTable"></div>
+        <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;">
+          <label class="form-label" for="lsIdInput">利用者IDで調べる（この年度に借りた冊数）</label>
+          <div style="display:flex;gap:8px;">
+            <input class="form-input" id="lsIdInput" type="text" placeholder="例：S25001" autocomplete="off"
+              style="font-family:'JetBrains Mono',monospace;font-size:18px;"
+              onkeydown="if(event.key==='Enter')lookupLendById()" />
+            <button class="btn btn-primary" style="white-space:nowrap;padding:10px 20px;" onclick="lookupLendById()">調べる</button>
+          </div>
+          <div id="lsIdResult"></div>
+        </div>
+      </div>
+
       <!-- よく借りられている本（本校） -->
       <div class="section-header-row">
         <div class="section-title-text">よく借りられている本</div>
@@ -3188,7 +3210,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-16-fix33（図書委員モードの貸出：①利用者カード → ②本 の順に読み取り、確認ボタンなしで貸出。続けて複数冊OK）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-17-fix34（利用者IDから学年を計算：統計に学年別・ID別の貸出冊数、管理者に学校別×学年の貸出冊数）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -5684,8 +5706,17 @@ async function loadAdminDashboard() {
         <button class="btn btn-primary" id="adminXBtn-pct" style="flex:1;font-size:13px;" onclick="adminSetCrossMode('pct')">割合（％）</button>
         <button class="btn btn-ghost" id="adminXBtn-cnt" style="flex:1;font-size:13px;" onclick="adminSetCrossMode('cnt')">冊数</button>
       </div>
-      <div class="card" id="adminCrossBox" style="overflow-x:auto;">${adminBuildCrossHtml()}</div>`;
+      <div class="card" id="adminCrossBox" style="overflow-x:auto;">${adminBuildCrossHtml()}</div>
+
+      <div class="section-header-row">
+        <div class="section-title-text">📒 学校別 × 学年の貸出冊数</div>
+      </div>
+      <div class="card" style="padding:12px 14px;">
+        <select class="form-select" id="adminLsYear" onchange="adminLoadGradeLending()" style="margin-bottom:10px;"></select>
+        <div id="adminLsBox"></div>
+      </div>`;
     adminUpdateCrossButtons();
+    adminInitGradeLending();   // fix34
   } catch (e) {
     console.error('管理者ダッシュボード読み込み失敗', e);
     const missing = e && (e.code === 'PGRST202' || /admin_collection_stats|function/i.test(e.message || ''));
@@ -5749,6 +5780,8 @@ async function loadStatsPage(schoolCd) {
 
   // 蔵書構成グラフ
   loadCollectionComposition(schoolCd);
+  // fix34：学年別の貸出冊数
+  lendStatsInit(schoolCd);
 
   // 人気本：デフォルト「今学期」で読み込む
   _popularPeriod = 'term';
@@ -6355,7 +6388,9 @@ function stuSetBorrower(id, fb) {
   stuTouch();
   stuUpdateStep();
   const k = stuKana();
-  stuFeedback(fb, 'ok', '🙂', `${id} ${k ? 'さん' : 'さん'}`, k ? 'つぎに 本の バーコードを ピッ' : '次に本のバーコードを読み取ってください');
+  const g = lsGrade(id, loginSchoolCd, getCurrentFiscalYear());   // fix34：IDから学年を表示
+  const gText = g === null ? '' : `（${lsGradeLabel(String(g), k)}）`;
+  stuFeedback(fb, 'ok', '🙂', `${id} さん${gText}`, k ? 'つぎに 本の バーコードを ピッ' : '次に本のバーコードを読み取ってください');
 }
 
 async function studentLendScan(val, fb) {
@@ -11006,6 +11041,302 @@ async function exportYearEndExcel() {
     btn.disabled = false;
     btn.textContent = '📊 Excelに出力';
   }
+}
+
+// ============================================================
+// fix34：利用者IDから学年を出して、学年別・ID別の貸出冊数を集計
+// ID の形：英字＋入学年度の下2桁＋連番（例：S25001 → 2025年度入学）
+// 学年＝貸出日の年度 − 入学年度 ＋ 1
+//   小学校：1〜6年。中学校：小学校入学のID（7〜9）なら中1〜中3、中学校入学のID（1〜3）ならそのまま
+// 所属校は「読み取った学校」（lendings.school_cd）。名前は扱わない。読んだ本の書名も出さない
+// ※ 状態は window のプロパティで持つ（TDZ対策）
+// ============================================================
+function lsEntryYear(id) {
+  const m = String(id || '').trim().match(/^[A-Za-z]+(\d{2})\d+$/);
+  return m ? 2000 + Number(m[1]) : null;
+}
+
+// 学年（数字）。判別できないときは null
+function lsGrade(id, schoolCd, fy) {
+  const ey = lsEntryYear(id);
+  if (ey === null || !fy) return null;
+  const g = fy - ey + 1;
+  const cd = String(schoolCd);
+  if (ELEM_CDS.includes(cd)) return (g >= 1 && g <= 6) ? g : null;
+  if (JHS_CDS.includes(cd)) {
+    if (g >= 7 && g <= 9) return g - 6;
+    if (g >= 1 && g <= 3) return g;
+    return null;
+  }
+  return null;
+}
+
+function lsMaxGrade(schoolCd) { return ELEM_CDS.includes(String(schoolCd)) ? 6 : 3; }
+
+function lsGradeLabel(key, kana) {
+  if (key === '不明') return kana ? 'がくねん ふめい' : '学年不明';
+  return kana ? `${key}ねんせい` : `${key}年生`;
+}
+
+// 貸出記録 [{user_id, lent_at}] → { byGrade: { '1': {count, users:Set}, …, '不明': … }, byUser: { ID: {count, grade, last} }, total }
+function lsAggregate(rows, schoolCd) {
+  const byGrade = {}, byUser = {};
+  let total = 0;
+  rows.forEach(r => {
+    const id = String(r.user_id || '').trim().toUpperCase();
+    if (!id) return;
+    const g = lsGrade(id, schoolCd, yeDateToFiscalYear(r.lent_at));
+    const key = g === null ? '不明' : String(g);
+    const bg = byGrade[key] || (byGrade[key] = { count: 0, users: new Set() });
+    bg.count++; bg.users.add(id);
+    const u = byUser[id] || (byUser[id] = { count: 0, grade: key, last: '' });
+    u.count++;
+    if (r.lent_at && String(r.lent_at) > u.last) u.last = String(r.lent_at);
+    total++;
+  });
+  return { byGrade, byUser, total };
+}
+
+// 1校・1年度分の貸出記録を全部取る（1,000件ずつ）
+async function lsFetch(schoolCds, fy) {
+  let rows = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.from('lendings')
+      .select('user_id, lent_at, school_cd')
+      .in('school_cd', schoolCds)
+      .gte('lent_at', `${fy}-04-01`)
+      .lt('lent_at', `${fy + 1}-04-01`)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows = rows.concat(data);
+    if (data.length < PAGE) break;
+  }
+  return rows;
+}
+
+function lsFillYearSelect(sel) {
+  if (!sel) return;
+  const fy = getCurrentFiscalYear();
+  sel.innerHTML = '';
+  for (let y = fy; y >= fy - 5; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = `${yeFiscalLabel(y)}（${y}年4月〜${y + 1}年3月）`;
+    sel.appendChild(opt);
+  }
+}
+
+// ---- 統計タブ（1校） ----
+function lendStatsInit(schoolCd) {
+  window._lsSchool = schoolCd;
+  const sel = document.getElementById('lsYear');
+  if (sel && !sel.options.length) lsFillYearSelect(sel);
+  const res = document.getElementById('lsIdResult');
+  if (res) res.innerHTML = '';
+  loadLendStats();
+}
+
+async function loadLendStats() {
+  const box = document.getElementById('lsGradeTable');
+  const schoolCd = window._lsSchool;
+  if (!box || !schoolCd) return;
+  const fy = parseInt(document.getElementById('lsYear').value) || getCurrentFiscalYear();
+  box.innerHTML = '<div style="text-align:center;color:var(--text3);padding:16px;font-size:13px;">読み込み中…</div>';
+  try {
+    const rows = await lsFetch([schoolCd], fy);
+    const agg = lsAggregate(rows, schoolCd);
+    window._lsData = { fy, schoolCd, agg };
+    box.innerHTML = lsGradeTableHtml(agg, schoolCd);
+    const res = document.getElementById('lsIdResult');
+    if (res && document.getElementById('lsIdInput')?.value.trim()) lookupLendById();
+  } catch (e) {
+    console.error('学年別貸出の集計失敗', e);
+    box.innerHTML = `<div style="color:var(--red);font-size:13px;padding:12px 0;">読み込みに失敗しました：${adminEsc((e && e.message) || '通信エラー')}</div>`;
+  }
+}
+
+function lsGradeTableHtml(agg, schoolCd) {
+  if (!agg.total) return '<div style="text-align:center;color:var(--text3);padding:16px;font-size:14px;">この年度の貸出データはまだありません</div>';
+  const max = lsMaxGrade(schoolCd);
+  const keys = [];
+  for (let g = 1; g <= max; g++) keys.push(String(g));
+  if (agg.byGrade['不明']) keys.push('不明');
+  const peak = Math.max(...keys.map(k => (agg.byGrade[k] || { count: 0 }).count), 1);
+  const th = 'padding:10px 8px;font-size:13px;color:var(--text2);font-weight:700;text-align:right;white-space:nowrap;';
+  const td = 'padding:11px 8px;font-size:15px;text-align:right;font-family:\'JetBrains Mono\',monospace;white-space:nowrap;';
+  const allUsers = Object.keys(agg.byUser).length;
+  const rows = keys.map(k => {
+    const r = agg.byGrade[k] || { count: 0, users: new Set() };
+    const n = r.users.size;
+    const w = (r.count / peak * 100).toFixed(1);
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:11px 8px;font-size:15px;font-weight:700;white-space:nowrap;">${lsGradeLabel(k)}</td>
+      <td style="${td}font-weight:700;color:var(--blue);">${r.count.toLocaleString()}</td>
+      <td style="${td}">${n.toLocaleString()}</td>
+      <td style="${td}">${n ? (r.count / n).toFixed(1) : '—'}</td>
+      <td style="padding:11px 8px;width:30%;"><div style="background:var(--bg4);border-radius:6px;height:10px;"><div style="width:${w}%;background:var(--blue);border-radius:6px;height:10px;"></div></div></td>
+    </tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+    <thead><tr>
+      <th style="${th}text-align:left;">学年</th><th style="${th}">貸出冊数</th><th style="${th}">借りた人数</th><th style="${th}">1人あたり</th><th></th>
+    </tr></thead>
+    <tbody>${rows}
+      <tr style="border-top:2px solid var(--border2);background:var(--bg3);">
+        <td style="padding:11px 8px;font-size:15px;font-weight:800;">合計</td>
+        <td style="${td}font-weight:800;">${agg.total.toLocaleString()}</td>
+        <td style="${td}font-weight:800;">${allUsers.toLocaleString()}</td>
+        <td style="${td}font-weight:800;">${allUsers ? (agg.total / allUsers).toFixed(1) : '—'}</td><td></td>
+      </tr>
+    </tbody></table></div>
+    <div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.6;">学年は利用者ID（入学年度）と貸出日から計算しています。「借りた人数」は1冊以上借りた人の数です。</div>`;
+}
+
+function lookupLendById() {
+  const out = document.getElementById('lsIdResult');
+  const id = (document.getElementById('lsIdInput')?.value || '').trim().toUpperCase();
+  const d = window._lsData;
+  if (!out) return;
+  if (!id) { out.innerHTML = ''; return; }
+  if (!d) { out.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">集計の読み込みを待ってから、もう一度押してください</div>'; return; }
+  const g = lsGrade(id, d.schoolCd, d.fy);
+  const gKey = g === null ? '不明' : String(g);
+  const u = d.agg.byUser[id];
+  const count = u ? u.count : 0;
+  const grade = d.agg.byGrade[gKey];
+  const avg = grade && grade.users.size ? (grade.count / grade.users.size) : null;
+  const last = u && u.last ? `${Number(u.last.slice(5, 7))}月${Number(u.last.slice(8, 10))}日` : '—';
+  out.innerHTML = `
+    <div style="background:var(--bg3);border-radius:18px;padding:14px 16px;margin-top:12px;">
+      <div style="font-size:14px;color:var(--text2);font-weight:700;">${adminEsc(id)}（${lsGradeLabel(gKey)}）・${adminEsc(yeFiscalLabel(d.fy))}</div>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;">
+        <span style="font-size:40px;font-weight:800;color:var(--blue);line-height:1.1;">${count}</span><span style="font-size:18px;font-weight:700;">冊</span>
+      </div>
+      <div style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.7;">
+        最後に借りた日：${last}${avg !== null && gKey !== '不明' ? `　／　${lsGradeLabel(gKey)}の1人あたり：${avg.toFixed(1)}冊` : ''}
+      </div>
+      ${lsEntryYear(id) === null ? '<div style="font-size:12px;color:var(--orange);margin-top:6px;">IDの形（例：S25001）から入学年度が読み取れませんでした</div>' : ''}
+    </div>`;
+}
+
+async function exportLendStatsExcel() {
+  const d = window._lsData;
+  if (!d || !d.agg.total) { alert('この年度の貸出データがありません'); return; }
+  if (!window.XLSX) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://toshositsu-aikawa.github.io/library/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const schoolName = (document.querySelector('#screen-stats .topbar-school')?.textContent || '').trim() || d.schoolCd;
+  const fyLabel = yeFiscalLabel(d.fy);
+  const max = lsMaxGrade(d.schoolCd);
+  const keys = [];
+  for (let g = 1; g <= max; g++) keys.push(String(g));
+  if (d.agg.byGrade['不明']) keys.push('不明');
+  const allUsers = Object.keys(d.agg.byUser).length;
+
+  const s1 = [
+    [`${schoolName}　${fyLabel}　学年別の貸出冊数`],
+    [],
+    ['学年', '貸出冊数', '借りた人数', '1人あたり（冊）'],
+    ...keys.map(k => {
+      const r = d.agg.byGrade[k] || { count: 0, users: new Set() };
+      return [lsGradeLabel(k), r.count, r.users.size, r.users.size ? Math.round(r.count / r.users.size * 10) / 10 : ''];
+    }),
+    ['合計', d.agg.total, allUsers, allUsers ? Math.round(d.agg.total / allUsers * 10) / 10 : ''],
+    [],
+    ['※ 学年は利用者ID（入学年度）と貸出日から計算。「借りた人数」は1冊以上借りた人の数'],
+  ];
+  const ids = Object.keys(d.agg.byUser).sort();
+  const s2 = [
+    [`${schoolName}　${fyLabel}　利用者ID別の貸出冊数`],
+    [],
+    ['利用者ID', '学年', '貸出冊数', '最後に借りた日'],
+    ...ids.map(id => {
+      const u = d.agg.byUser[id];
+      return [id, lsGradeLabel(u.grade), u.count, u.last ? u.last.slice(0, 10) : ''];
+    }),
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(s1);
+  ws1['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }];
+  const ws2 = XLSX.utils.aoa_to_sheet(s2);
+  ws2['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, ws1, '学年別');
+  XLSX.utils.book_append_sheet(wb, ws2, 'ID別');
+  XLSX.writeFile(wb, `貸出冊数_学年別_${schoolName}_${fyLabel}.xlsx`);
+}
+
+// ---- 管理者ダッシュボード：学校別 × 学年 ----
+function adminInitGradeLending() {
+  const sel = document.getElementById('adminLsYear');
+  if (sel && !sel.options.length) lsFillYearSelect(sel);
+  adminLoadGradeLending();
+}
+
+async function adminLoadGradeLending() {
+  const box = document.getElementById('adminLsBox');
+  if (!box) return;
+  const fy = parseInt(document.getElementById('adminLsYear')?.value) || getCurrentFiscalYear();
+  box.innerHTML = '<div style="text-align:center;color:var(--text3);padding:16px;font-size:13px;">読み込み中…</div>';
+  try {
+    const rows = await lsFetch(SCHOOLS.map(s => s.cd), fy);
+    const bySchool = {};
+    SCHOOLS.forEach(s => { bySchool[s.cd] = lsAggregate(rows.filter(r => String(r.school_cd) === s.cd), s.cd); });
+    window._adminLs = { fy, bySchool };
+    box.innerHTML = adminGradeLendingHtml(bySchool);
+  } catch (e) {
+    console.error('学校別×学年の貸出集計失敗', e);
+    box.innerHTML = `<div style="color:var(--red);font-size:13px;padding:12px 0;">読み込みに失敗しました：${adminEsc((e && e.message) || '通信エラー')}</div>`;
+  }
+}
+
+function adminGradeLendingHtml(bySchool) {
+  const th = 'padding:8px 6px;font-size:12px;color:var(--text2);font-weight:600;text-align:right;white-space:nowrap;';
+  const td = 'padding:8px 6px;font-size:13px;text-align:right;font-family:\'JetBrains Mono\',monospace;white-space:nowrap;';
+  const cols = ['1', '2', '3', '4', '5', '6', '不明'];
+  const cell = (agg, k, max) => {
+    if (k !== '不明' && Number(k) > max) return `<td style="${td}color:var(--text3);">—</td>`;
+    const n = (agg.byGrade[k] || { count: 0 }).count;
+    return `<td style="${td}">${n ? n.toLocaleString() : '<span style="color:var(--text3);">0</span>'}</td>`;
+  };
+  const sumRow = (label, list, max, strong) => {
+    const tot = {};
+    let all = 0;
+    list.forEach(s => { cols.forEach(k => { tot[k] = (tot[k] || 0) + ((bySchool[s.cd].byGrade[k] || { count: 0 }).count); }); all += bySchool[s.cd].total; });
+    return `<tr style="background:var(--bg3);border-top:1px solid var(--border2);">
+      <td style="padding:8px 6px;font-size:13px;font-weight:700;white-space:nowrap;">${label}</td>
+      ${cols.map(k => (k !== '不明' && Number(k) > max) ? `<td style="${td}color:var(--text3);">—</td>` : `<td style="${td}font-weight:700;">${(tot[k] || 0).toLocaleString()}</td>`).join('')}
+      <td style="${td}font-weight:800;${strong ? 'color:var(--blue);' : ''}">${all.toLocaleString()}</td>
+    </tr>`;
+  };
+  const schoolRow = s => {
+    const agg = bySchool[s.cd];
+    const max = lsMaxGrade(s.cd);
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:8px 6px;font-size:13px;white-space:nowrap;">${adminEsc(s.name)}</td>
+      ${cols.map(k => cell(agg, k, max)).join('')}
+      <td style="${td}font-weight:700;color:var(--blue);">${agg.total.toLocaleString()}</td>
+    </tr>`;
+  };
+  const elem = SCHOOLS.filter(s => ELEM_CDS.includes(s.cd));
+  const jhs  = SCHOOLS.filter(s => JHS_CDS.includes(s.cd));
+  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+    <thead><tr style="border-bottom:2px solid var(--border2);">
+      <th style="${th}text-align:left;">学校</th>${cols.map(k => `<th style="${th}">${k === '不明' ? '不明' : k + '年'}</th>`).join('')}<th style="${th}">計</th>
+    </tr></thead>
+    <tbody>
+      ${elem.map(schoolRow).join('')}${sumRow('小学校 計', elem, 6)}
+      ${jhs.map(schoolRow).join('')}${sumRow('中学校 計', jhs, 3)}
+      ${sumRow('町全体', SCHOOLS, 6, true)}
+    </tbody></table></div>
+    <div style="padding:8px 2px 2px;font-size:11px;color:var(--text3);line-height:1.6;">単位：冊。学年は利用者ID（入学年度）と貸出日から計算。所属校は貸出を読み取った学校です。</div>`;
 }
 
 // ============================================================
