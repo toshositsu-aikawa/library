@@ -2002,12 +2002,13 @@ body.student-mode .student-step {
         <div class="section-title-text">📒 学年別の貸出冊数</div>
       </div>
       <div class="card" style="margin-bottom:16px;padding:14px 16px;">
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:10px;">集計する年度を選ぶと、その年度に何年生が何冊借りたかが出ます。</div>
         <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
           <select class="form-select" id="lsYear" onchange="loadLendStats()" style="flex:1;"></select>
           <button class="btn btn-ghost" style="white-space:nowrap;padding:10px 16px;" onclick="exportLendStatsExcel()">📊 Excel出力</button>
         </div>
         <div id="lsGradeTable"></div>
-        <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;">
+        <div id="lsIdBlock" style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;">
           <label class="form-label" for="lsIdInput">利用者IDで調べる（この年度に借りた冊数）</label>
           <div style="display:flex;gap:8px;">
             <input class="form-input" id="lsIdInput" type="text" placeholder="例：S25001" autocomplete="off"
@@ -3210,7 +3211,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-17-fix34（利用者IDから学年を計算：統計に学年別・ID別の貸出冊数、管理者に学校別×学年の貸出冊数）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-17-fix36（学年別の貸出冊数：先生の画面は本校のみに戻す（町内9校の比較は管理者画面だけ）。0件でも学年ごとの表を表示）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -11146,6 +11147,7 @@ async function loadLendStats() {
   const fy = parseInt(document.getElementById('lsYear').value) || getCurrentFiscalYear();
   box.innerHTML = '<div style="text-align:center;color:var(--text3);padding:16px;font-size:13px;">読み込み中…</div>';
   try {
+    // fix36：先生の画面は本校の貸出だけを読む（他校の集計は管理者ダッシュボードのみ）
     const rows = await lsFetch([schoolCd], fy);
     const agg = lsAggregate(rows, schoolCd);
     window._lsData = { fy, schoolCd, agg };
@@ -11159,7 +11161,10 @@ async function loadLendStats() {
 }
 
 function lsGradeTableHtml(agg, schoolCd) {
-  if (!agg.total) return '<div style="text-align:center;color:var(--text3);padding:16px;font-size:14px;">この年度の貸出データはまだありません</div>';
+  // fix35：0件でも学年ごとの表を出す
+  const empty = !agg.total
+    ? '<div style="text-align:center;color:var(--text3);padding:10px 0 2px;font-size:13px;">この年度の貸出はまだありません（貸出が始まると数字が入ります）</div>'
+    : '';
   const max = lsMaxGrade(schoolCd);
   const keys = [];
   for (let g = 1; g <= max; g++) keys.push(String(g));
@@ -11192,6 +11197,7 @@ function lsGradeTableHtml(agg, schoolCd) {
         <td style="${td}font-weight:800;">${allUsers ? (agg.total / allUsers).toFixed(1) : '—'}</td><td></td>
       </tr>
     </tbody></table></div>
+    ${empty}
     <div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.6;">学年は利用者ID（入学年度）と貸出日から計算しています。「借りた人数」は1冊以上借りた人の数です。</div>`;
 }
 
@@ -11297,7 +11303,7 @@ async function adminLoadGradeLending() {
   }
 }
 
-function adminGradeLendingHtml(bySchool) {
+function adminGradeLendingHtml(bySchool, highlightCd) {
   const th = 'padding:8px 6px;font-size:12px;color:var(--text2);font-weight:600;text-align:right;white-space:nowrap;';
   const td = 'padding:8px 6px;font-size:13px;text-align:right;font-family:\'JetBrains Mono\',monospace;white-space:nowrap;';
   const cols = ['1', '2', '3', '4', '5', '6', '不明'];
@@ -11319,8 +11325,9 @@ function adminGradeLendingHtml(bySchool) {
   const schoolRow = s => {
     const agg = bySchool[s.cd];
     const max = lsMaxGrade(s.cd);
-    return `<tr style="border-top:1px solid var(--border);">
-      <td style="padding:8px 6px;font-size:13px;white-space:nowrap;">${adminEsc(s.name)}</td>
+    const mine = highlightCd && s.cd === String(highlightCd);
+    return `<tr style="border-top:1px solid var(--border);${mine ? 'background:var(--blue-dim);' : ''}">
+      <td style="padding:8px 6px;font-size:13px;white-space:nowrap;${mine ? 'font-weight:800;' : ''}">${adminEsc(s.name)}${mine ? '（本校）' : ''}</td>
       ${cols.map(k => cell(agg, k, max)).join('')}
       <td style="${td}font-weight:700;color:var(--blue);">${agg.total.toLocaleString()}</td>
     </tr>`;
