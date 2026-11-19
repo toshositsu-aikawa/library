@@ -3211,7 +3211,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-17-fix36（学年別の貸出冊数：先生の画面は本校のみに戻す（町内9校の比較は管理者画面だけ）。0件でも学年ごとの表を表示）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-19-fix37（本の詳細に「愛川町図書館の所蔵」：カーリルにEdge Function「calil」経由で問い合わせ。本の詳細の表示を安全な文字に変換）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -8508,28 +8508,28 @@ async function openBookDetail(bookId) {
   document.querySelector('#bookDetailModal .modal-body').innerHTML = `
     <div style="text-align:center;margin-bottom:20px;">
       ${coverHtml}
-      <div style="font-family:'Noto Serif JP',serif;font-size:18px;font-weight:700;margin-bottom:6px;">${data.title}</div>
-      <div style="font-size:13px;color:var(--text3);">${data.author || ''}</div>
+      <div style="font-family:'Noto Serif JP',serif;font-size:18px;font-weight:700;margin-bottom:6px;">${escHtml(data.title || '')}</div>
+      <div style="font-size:13px;color:var(--text3);">${escHtml(data.author || '')}</div>
       <div style="margin-top:10px;">${statusPill}</div>
     </div>
     <div class="divider"></div>
     <div style="display:flex;flex-direction:column;gap:0;">
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">場所</div>
-        <div style="font-size:14px;font-weight:500;">${locationText}</div>
+        <div style="font-size:14px;font-weight:500;">${escHtml(locationText)}</div>
       </div>
       ${data.category === '外国語' || data.category === '外国語の本' && data.language ? `
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">言語</div>
-        <div style="font-size:14px;font-weight:500;">🌐 ${data.language}</div>
+        <div style="font-size:14px;font-weight:500;">🌐 ${escHtml(data.language || '')}</div>
       </div>` : ''}
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">登録番号</div>
-        <div style="font-size:14px;font-weight:500;">${data.registration_no || '—'}</div>
+        <div style="font-size:14px;font-weight:500;">${escHtml(data.registration_no || '—')}</div>
       </div>
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">出版社</div>
-        <div style="font-size:14px;font-weight:500;">${data.publisher || '—'}</div>
+        <div style="font-size:14px;font-weight:500;">${escHtml(data.publisher || '—')}</div>
       </div>
       <div class="overdue-row" style="padding:12px 0;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">納品日</div>
@@ -8541,9 +8541,10 @@ async function openBookDetail(bookId) {
       </div>
       <div class="overdue-row" style="padding:12px 0;border:none;">
         <div style="font-size:13px;color:var(--text3);width:90px;flex-shrink:0;">ISBN</div>
-        <div style="font-size:13px;font-family:monospace;color:var(--text2);">${data.isbn}</div>
+        <div style="font-size:13px;font-family:monospace;color:var(--text2);">${escHtml(data.isbn || '—')}</div>
       </div>
     </div>
+    ${calilSectionHtml(data)}
     <div class="divider"></div>
     ${(currentSchoolCd === loginSchoolCd || loginSchoolCd === 'admin') ? `
     <div class="btn-row">
@@ -8561,6 +8562,114 @@ async function openBookDetail(bookId) {
     `}
   `;
   openModal('bookDetailModal');
+}
+
+// ============================================================
+// fix37：愛川町図書館の所蔵（カーリル）
+// 画面 → Supabase の Edge Function「calil」 → カーリル の順に中継する。
+// 送るのはISBNだけ。アプリケーションキーは Supabase の Secrets にあり、画面には出ない。
+// 返ってきた内容は必ず escHtml で文字として表示し、リンクは別タブ・参照元なしで開く。
+// ※ 状態は window のプロパティで持つ（TDZ対策）
+// ============================================================
+function calilIsbn(raw) {
+  const s = String(raw || '').replace(/[-\s]/g, '').toUpperCase();
+  return (/^97[89]\d{10}$/.test(s) || /^\d{9}[\dX]$/.test(s)) ? s : null;
+}
+
+function calilSectionHtml(book) {
+  if (isStudentMode || !calilIsbn(book.isbn)) return '';
+  return `
+    <div class="divider"></div>
+    <div id="calilBox" style="padding:4px 0 2px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;font-size:15px;">🏛️ 愛川町図書館の所蔵</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px;">カーリルで、町の図書館にこの本があるか調べます</div>
+        </div>
+        <button class="btn btn-ghost" id="calilBtn" style="white-space:nowrap;padding:10px 18px;" onclick="checkCalil()">確認する</button>
+      </div>
+      <div id="calilResult"></div>
+    </div>`;
+}
+
+function calilStatusColor(st) {
+  if (/貸出可/.test(st)) return 'var(--green)';
+  if (/蔵書あり|館内/.test(st)) return 'var(--blue)';
+  if (/貸出中|予約中|準備中|休館/.test(st)) return 'var(--orange)';
+  return 'var(--text3)';
+}
+
+function calilSafeUrl(u) {
+  try {
+    const url = new URL(String(u || ''));
+    return (url.protocol === 'https:' || url.protocol === 'http:') ? url.toString() : '';
+  } catch (e) { return ''; }
+}
+
+function calilRender(res) {
+  const out = document.getElementById('calilResult');
+  if (!out) return;
+  const box = (inner) => `<div style="background:var(--bg3);border-radius:16px;padding:12px 14px;margin-top:10px;">${inner}</div>`;
+  if (res.status === 'running') {
+    out.innerHTML = box('<div style="font-size:14px;color:var(--text2);">図書館の確認に時間がかかっています。少し待ってから、もう一度「確認する」を押してください。</div>');
+    return;
+  }
+  const entries = Object.entries(res.libkey || {});
+  const link = (href, label) => {
+    const safe = calilSafeUrl(href);
+    return safe ? `<a href="${escHtml(safe)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" style="color:var(--blue);font-weight:700;font-size:14px;">${label} ↗</a>` : '';
+  };
+  const rows = entries.length
+    ? entries.map(([name, st]) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;">
+          <span style="font-size:15px;font-weight:600;">${escHtml(name)}</span>
+          <span style="font-size:14px;font-weight:800;color:${calilStatusColor(st)};white-space:nowrap;">${escHtml(st)}</span>
+        </div>`).join('')
+    : '<div style="font-size:15px;font-weight:600;">愛川町図書館には所蔵がありません</div>';
+  const links = [link(res.reserveurl, '図書館のページで見る・予約'), link(res.calilurl, 'カーリルで見る')].filter(Boolean).join('<span style="margin:0 8px;color:var(--text3);">｜</span>');
+  out.innerHTML = box(`${rows}
+    ${links ? `<div style="margin-top:8px;line-height:1.8;">${links}</div>` : ''}
+    <div style="font-size:11px;color:var(--text3);margin-top:6px;">情報提供：カーリル（調べた時点の状態です）</div>`);
+}
+
+async function checkCalil() {
+  const book = currentBookData;
+  const isbn = calilIsbn(book && book.isbn);
+  const out = document.getElementById('calilResult');
+  const btn = document.getElementById('calilBtn');
+  if (!isbn || !out) return;
+  window._calilCache = window._calilCache || {};
+  const cached = window._calilCache[isbn];
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) { calilRender(cached.res); return; }   // 10分間は前の結果を使う
+
+  if (btn) { btn.disabled = true; btn.textContent = '確認中…'; }
+  out.innerHTML = '<div style="font-size:14px;color:var(--text3);padding:10px 0;">図書館に問い合わせています（数秒〜10秒ほど）…</div>';
+  try {
+    const { data, error } = await db.functions.invoke('calil', { body: { isbn } });
+    if (error) {
+      let detail = '';
+      try {
+        if (error.context && typeof error.context.json === 'function') {
+          const b = await error.context.json();
+          detail = (b && b.error) ? String(b.error) : '';
+        }
+      } catch (e2) {}
+      throw new Error(detail || error.message || '通信エラー');
+    }
+    if (!data || data.status === 'error') throw new Error((data && data.error) || '図書館の情報を受け取れませんでした');
+    if (data.status === 'ok') window._calilCache[isbn] = { at: Date.now(), res: data };
+    calilRender(data);
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    const hint = /CALIL_APPKEY/.test(msg)
+      ? '（Supabaseの Secrets に CALIL_APPKEY を設定してください）'
+      : /not found|404|Failed to send/i.test(msg)
+        ? '（Edge Function「calil」がまだデプロイされていない可能性があります）'
+        : '';
+    out.innerHTML = `<div style="font-size:13px;color:var(--red);padding:10px 0;line-height:1.6;">確認できませんでした：${escHtml(msg)}${hint}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '確認する'; }
+  }
 }
 
 // ============================================================
