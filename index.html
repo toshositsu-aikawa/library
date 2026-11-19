@@ -1579,6 +1579,7 @@ body.student-mode .student-step {
       <input class="search-input" id="bookSearchInput" type="search" placeholder="タイトル・著者・ISBNで検索…" />
     </div>
     <button onclick="openCrossSearchModal()" style="width:100%;padding:12px;background:var(--blue-dim);border:1px solid var(--blue);border-radius:10px;color:var(--blue);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">🌐 町内全校を横断検索</button>
+    <button id="townLibBtn1" onclick="openTownLibrary('bookSearchInput')" style="width:100%;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">📚 愛川町図書館で探す（キーワードをコピーして開く）</button>
 
     <!-- あいうえお検索 -->
     <div id="kanaFilter" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
@@ -2496,7 +2497,8 @@ body.student-mode .student-step {
         <div class="search-icon">🔍</div>
         <input class="search-input" id="crossSearchInput" type="search" placeholder="タイトル・著者・ISBNで検索…" />
       </div>
-      <button onclick="runCrossSearch()" style="width:100%;padding:14px;background:var(--blue);border:none;border-radius:10px;color:white;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">検索</button>
+      <button onclick="runCrossSearch()" style="width:100%;padding:14px;background:var(--blue);border:none;border-radius:10px;color:white;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">検索</button>
+      <button onclick="openTownLibrary('crossSearchInput')" style="width:100%;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:14px;">📚 愛川町図書館で探す（キーワードをコピーして開く）</button>
       <div id="crossSearchResults"><div style="text-align:center;color:var(--text3);padding:20px;font-size:13px;">キーワードを入力して検索してください</div></div>
     </div>
   </div>
@@ -3211,7 +3213,7 @@ function escHtml(str) {
 // ============================================================
 // Supabase 接続設定
 // ============================================================
-console.log('%c📚 図書館システム v2026-11-19-fix37（本の詳細に「愛川町図書館の所蔵」：カーリルにEdge Function「calil」経由で問い合わせ。本の詳細の表示を安全な文字に変換）', 'color:#3dd68c;font-weight:bold;font-size:14px');
+console.log('%c📚 図書館システム v2026-11-20-fix38（「愛川町図書館で探す」ボタン：入力中のキーワードをコピーして図書館の蔵書検索を開く）', 'color:#3dd68c;font-weight:bold;font-size:14px');
 
 const SUPABASE_URL = 'https://yxcedrosznhjwurljrhu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_JaeKjAYNsT8_2pdaa2iL0Q_nTfZLmXa'
@@ -8686,6 +8688,29 @@ const SCHOOLS = [
   { cd: '50402', name: '愛川東中学校' },
   { cd: '50403', name: '愛川中原中学校' },
 ];
+
+// fix38：愛川町図書館の蔵書検索を開く（検索結果ページは直接呼び出せないため、キーワードをコピーして入口を開く）
+const TOWN_LIB_SEARCH_URL = 'https://www.library-aikawa-unet.ocn.ne.jp/TOSHOW/asp/WwKensaku.aspx';
+function openTownLibrary(inputId) {
+  // タブレット（Safari）でも止められないよう、コピーも別タブを開くのも、押した直後にすぐ実行する
+  const kw = (document.getElementById(inputId)?.value || '').trim();
+  let copied = false;
+  if (kw) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = kw; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, kw.length);
+      copied = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) { copied = false; }
+    if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(kw).catch(() => {});
+      copied = true;
+    }
+  }
+  window.open(TOWN_LIB_SEARCH_URL, '_blank', 'noopener,noreferrer');
+  if (kw && copied) setTimeout(() => alert('「' + kw + '」をコピーしました。\n図書館のページの検索欄に貼り付けてください。'), 300);
+}
 
 function openCrossSearchModal() {
   openModal('crossSearchModal');
